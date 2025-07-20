@@ -114,4 +114,6 @@ private:
 
 	void immediate_submit(std::function<void(VkCommandBuffer cmd)>&& function);
 	void init_imgui();
+
+	void draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView);
 };
