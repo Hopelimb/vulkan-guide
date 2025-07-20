@@ -13,10 +13,11 @@ void main()
     if(texelCoord.x < size.x && texelCoord.y < size.y)
     {
         vec4 color = vec4(0.0, 0.0, 0.0, 1.0);        
+        // get the current time
 
         if(gl_LocalInvocationID.x != 0 && gl_LocalInvocationID.y != 0)
         {
-            color.x = float(texelCoord.x)/(size.x);
+            color.x = sin(float(texelCoord.x)/(size.x));
             color.y = float(texelCoord.y)/(size.y);	
         }
     
