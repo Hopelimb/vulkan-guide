@@ -38,24 +38,23 @@ VkDescriptorSetLayout DsecriptorLayoutBuilder::build(VkDevice device, VkShaderSt
 	return setlayout;
 }
 
-void DescriptorAllocator::init_pool(VkDevice device, uint32_t maxSets, std::span<PoolSizeRatio> poolRatios)
+void DescriptorAllocator::init_pool(VkDevice device, uint32_t mexSets, std::span<PoolSizeRatio> poolRatios)
 {
 	std::vector<VkDescriptorPoolSize> poolSizes;
-
 	for (const auto& ratio : poolRatios) 
 	{
 		poolSizes.push_back(
 			VkDescriptorPoolSize{
 			.type = ratio.type,
-			.descriptorCount = static_cast<uint32_t>(maxSets * ratio.ratio),
+			.descriptorCount = static_cast<uint32_t>(mexSets * ratio.ratio),
 		});
 	}
 
 	VkDescriptorPoolCreateInfo poolInfo 
 	{
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-		.maxSets = maxSets,	// maximum number of descriptor sets that can be allocated from this pool
-		.poolSizeCount = static_cast<uint32_t>(poolSizes.size()), // pool size count means how many different types of descriptors we can allocate
+		.maxSets = mexSets,
+		.poolSizeCount = static_cast<uint32_t>(poolSizes.size()),
 		.pPoolSizes = poolSizes.data(),
 	};
 

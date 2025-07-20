@@ -44,7 +44,7 @@ public:
 	bool _isInitialized{ false };
 	int _frameNumber {0};
 	bool stop_rendering{ false };
-	VkExtent2D _windowExtent{ 1280 , 720 };
+	VkExtent2D _windowExtent{ 1700 , 900 };
 	VkInstance _instance{ VK_NULL_HANDLE };
 	VkDebugUtilsMessengerEXT _debug_messenger{ VK_NULL_HANDLE };
 	VkPhysicalDevice _chosenGPU{ VK_NULL_HANDLE };
@@ -80,11 +80,6 @@ public:
 	VkDescriptorSet _drawImageDescriptor{ VK_NULL_HANDLE };
 	VkDescriptorSetLayout _drawImageDescriptorLayout{ VK_NULL_HANDLE };
 
-	VkFence _immFence;
-	VkCommandBuffer _immCommandBuffer{ VK_NULL_HANDLE };
-	VkCommandPool _immCommandPool{ VK_NULL_HANDLE };
-
-
 	//initializes everything in the engine
 	void init();
 
@@ -111,7 +106,4 @@ private:
 
 	void create_swapchain(uint32_t width, uint32_t height);
 	void destroy_swapchain();
-
-	void immediate_submit(std::function<void(VkCommandBuffer cmd)>&& function);
-	void init_imgui();
 };
