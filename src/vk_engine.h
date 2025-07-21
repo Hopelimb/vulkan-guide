@@ -41,6 +41,16 @@ struct ComputePushConstants {
 	glm::vec4 data4;
 };
 
+struct ComputeEffect {
+	const char* name;
+
+	VkPipeline pipeline;
+	VkPipelineLayout pipelineLayout;
+
+	ComputePushConstants data;
+};
+
+
 constexpr unsigned int FRAME_OVERLAP = 2; // number of frames in flight
 
 class VulkanEngine {
@@ -81,7 +91,7 @@ public:
 	AllocatedImage _drawImage{};
 	VkExtent2D _drawExtent{};
 
-	VkPipeline _gradientPipeline{ VK_NULL_HANDLE };
+	//VkPipeline _gradientPipeline{ VK_NULL_HANDLE };
 	VkPipelineLayout _gradientPipelineLayout{ VK_NULL_HANDLE };
 	DescriptorAllocator _globalDescriptorAllocator{};
 	VkDescriptorSet _drawImageDescriptor{ VK_NULL_HANDLE };
@@ -91,6 +101,8 @@ public:
 	VkCommandBuffer _immCommandBuffer{ VK_NULL_HANDLE };
 	VkCommandPool _immCommandPool{ VK_NULL_HANDLE };
 
+	std::vector<ComputeEffect> backgroundEffects;
+	int currentBachgroundEffect{ 0 };
 
 	//initializes everything in the engine
 	void init();
