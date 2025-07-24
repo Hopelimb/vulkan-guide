@@ -114,9 +114,14 @@ void VulkanEngine::draw()
 
         draw_background(cmd);
 
+        vkutil::transition_image(cmd, _drawImage.image,
+			VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+		draw_geometry(cmd);
+
         // copy the draw image to the swapchain image
         vkutil::transition_image(cmd, _drawImage.image,
-            VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
         vkutil::transition_image(cmd, _swapchainImages[swapchainImageIndex],
             VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
         vkutil::copy_image_to_image(cmd, _drawImage.image, _swapchainImages[swapchainImageIndex],
@@ -178,6 +183,41 @@ void VulkanEngine::draw_background(VkCommandBuffer cmd)
 
 	vkCmdPushConstants(cmd, _gradientPipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputePushConstants), &currentEffect.data);
     vkCmdDispatch(cmd, std::ceil(_drawExtent.width / 16.0), std::ceil(_drawExtent.width / 16.0), 1);
+}
+
+void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
+{
+    VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(
+        _drawImage.imageView,
+		nullptr, // no clear value, we already cleared it in the background
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+    VkRenderingInfo renderInfo = vkinit::rendering_info(_drawExtent, &colorAttachment, nullptr);
+	vkCmdBeginRendering(cmd, &renderInfo);
+
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _trianglePipeline);
+    VkViewport viewport{
+        .x = 0.0f,
+        .y = 0.0f,
+        .width = (float)_drawExtent.width,
+        .height = (float)_drawExtent.height,
+        .minDepth = 0.0f,
+        .maxDepth = 1.0f
+	};
+
+	vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+    VkRect2D scissor{
+        .offset = { 0, 0 },
+        .extent = _drawExtent
+	};
+
+	vkCmdSetScissor(cmd, 0, 1, &scissor);
+
+	vkCmdDraw(cmd, 3, 1, 0, 0);
+
+
+	vkCmdEndRendering(cmd);
 }
 
 void VulkanEngine::run()
@@ -423,6 +463,7 @@ void VulkanEngine::init_descriptors()
 void VulkanEngine::init_pipelines()
 {
     init_background_pipelines();
+	init_triangle_pipeline();
 }
 
 void VulkanEngine::init_background_pipelines()
@@ -508,6 +549,51 @@ void VulkanEngine::init_background_pipelines()
         vkDestroyPipeline(_device, sky.pipeline, nullptr);
         vkDestroyPipeline(_device, gradient.pipeline, nullptr);
         });
+}
+
+void VulkanEngine::init_triangle_pipeline()
+{
+    VkShaderModule triangleFragShader;
+    if (!vkutil::load_shader_module("../../shaders/colored_triangle.frag.spv", _device, &triangleFragShader)) {
+        fmt::println("Error when building the triangle fragment shader module");
+    }
+    else {
+        fmt::println("Triangle fragment shader succesfully loaded");
+    }
+
+    VkShaderModule triangleVertexShader;
+    if (!vkutil::load_shader_module("../../shaders/colored_triangle.vert.spv", _device, &triangleVertexShader)) {
+        fmt::println("Error when building the triangle vertex shader module");
+    }
+    else {
+        fmt::println("Triangle vertex shader succesfully loaded");
+    }
+
+
+    VkPipelineLayoutCreateInfo pipeline_layout_info = vkinit::pipeline_layout_create_info();
+	VK_CHECK(vkCreatePipelineLayout(_device, &pipeline_layout_info, nullptr, &_trianglePipelineLayout));
+   
+    vkutil::PipelineBuilder pipelineBuilder{};
+    pipelineBuilder._pipelineLayout = _trianglePipelineLayout,
+	pipelineBuilder.set_shaders(triangleVertexShader, triangleFragShader);
+	pipelineBuilder.set_input_typology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+	pipelineBuilder.set_polygon_mode(VK_POLYGON_MODE_FILL);
+	pipelineBuilder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+	pipelineBuilder.set_multisampling_none();
+	pipelineBuilder.disable_blending();
+	pipelineBuilder.disable_depthtest();
+	pipelineBuilder.set_color_attachment_format(_drawImage.imageFormat);
+	pipelineBuilder.set_depth_format(VK_FORMAT_UNDEFINED);
+
+	_trianglePipeline = pipelineBuilder.builder_Pipeline(_device);
+
+    vkDestroyShaderModule(_device, triangleFragShader, nullptr);
+	vkDestroyShaderModule(_device, triangleVertexShader, nullptr);
+
+    _mainDeletionQueue.push_function([=]() {
+        vkDestroyPipelineLayout(_device, _trianglePipelineLayout, nullptr);
+        vkDestroyPipeline(_device, _trianglePipeline, nullptr);
+		});
 }
 
 void VulkanEngine::create_swapchain(uint32_t width, uint32_t height)

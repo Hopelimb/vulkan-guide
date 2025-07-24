@@ -101,6 +101,9 @@ public:
 	VkCommandBuffer _immCommandBuffer{ VK_NULL_HANDLE };
 	VkCommandPool _immCommandPool{ VK_NULL_HANDLE };
 
+	VkPipelineLayout _trianglePipelineLayout{ VK_NULL_HANDLE };
+	VkPipeline _trianglePipeline{ VK_NULL_HANDLE };
+
 	std::vector<ComputeEffect> backgroundEffects;
 	int currentBachgroundEffect{ 0 };
 
@@ -113,6 +116,7 @@ public:
 	//draw loop
 	void draw();
 	void draw_background(VkCommandBuffer cmd);
+	void draw_geometry(VkCommandBuffer cmd);
 
 	//run main loop
 	void run();
@@ -127,6 +131,7 @@ private:
 
 	void init_pipelines();
 	void init_background_pipelines();
+	void init_triangle_pipeline();
 
 	void create_swapchain(uint32_t width, uint32_t height);
 	void destroy_swapchain();
