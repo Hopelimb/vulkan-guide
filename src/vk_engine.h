@@ -50,7 +50,6 @@ struct ComputeEffect {
 	ComputePushConstants data;
 };
 
-
 constexpr unsigned int FRAME_OVERLAP = 2; // number of frames in flight
 
 class VulkanEngine {
@@ -140,4 +139,12 @@ private:
 	void init_imgui();
 
 	void draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView);
+
+
+	AllocatedBuffer create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
+
+	void destroy_buffer(const AllocatedBuffer& buffer);
+
+
+	GPUMeshBuffers uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
 };

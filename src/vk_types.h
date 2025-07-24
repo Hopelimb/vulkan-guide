@@ -37,3 +37,29 @@ struct AllocatedImage {
     VkExtent3D imageExtent;
     VkFormat imageFormat;
 };
+
+struct AllocatedBuffer {
+    VkBuffer buffer; 					// Vulkan buffer object	
+    VmaAllocation allocation;			// memory allocation for the buffer
+    VmaAllocationInfo allocationInfo;	// metadata about the allocation and the buffer, such as size, memory type, etc.
+};
+
+
+struct Vertex {
+    glm::vec3 position;
+    float uv_x;
+    glm::vec3 normal;
+    float uv_y;
+	glm::vec4 color;
+};
+
+struct GPUMeshBuffers {
+    AllocatedBuffer indexBuffer;
+    AllocatedBuffer vertexBuffer;
+    VkDeviceAddress vertexBufferAddress;
+};
+
+struct GPUDrawPushConstants {
+    glm::mat4 vorldMatrix;
+    VkDeviceAddress vertexBuffer;
+};
