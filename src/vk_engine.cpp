@@ -22,6 +22,12 @@
 
 VulkanEngine* loadedEngine = nullptr;
 
+const char* SHADER_PATH_TRIANGLE_VERT = "../../shaders/colored_triangle.vert.spv";
+const char* SHADER_PATH_TRIANGLE_MESH_VERT = "../../shaders/colored_triangle_mesh.vert.spv";
+const char* SHADER_PATH_TRIANGLE_FRAG = "../../shaders/colored_triangle.frag.spv";
+const char* SHADER_PATH_GRADIENTCOLOR_COMP = "../../shaders/gradient_color.comp.spv";
+const char* SHADER_PATH_SKY_COMP = "../../shaders/sky.comp.spv";
+
 VulkanEngine& VulkanEngine::Get() { return *loadedEngine; }
 void VulkanEngine::init()
 {
@@ -51,7 +57,7 @@ void VulkanEngine::init()
     init_pipelines();
 
     init_imgui();
-
+    init_default_data();
     // everything went fine
     _isInitialized = true;
 }
@@ -214,8 +220,19 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
 
 	vkCmdSetScissor(cmd, 0, 1, &scissor);
 
-	vkCmdDraw(cmd, 3, 1, 0, 0);
+	//vkCmdDraw(cmd, 3, 1, 0, 0);
 
+
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _meshPipeline);
+
+    GPUDrawPushConstants push_constants;
+    push_constants.worldMatrix = glm::mat4{ 1.f };
+    push_constants.vertexBuffer = _rectangle.vertexBufferAddress;
+
+    vkCmdPushConstants(cmd, _meshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &push_constants);
+    vkCmdBindIndexBuffer(cmd, _rectangle.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+
+    vkCmdDrawIndexed(cmd, 6, 1, 0, 0, 0);
 
 	vkCmdEndRendering(cmd);
 }
@@ -365,6 +382,7 @@ void VulkanEngine::init_swapchain()
         .usage = VMA_MEMORY_USAGE_GPU_ONLY,
         .requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT),
     };
+
     VK_CHECK(vmaCreateImage(_allocator, &rimg_info, &rimg_allocinfo, &_drawImage.image, &_drawImage.allocation, nullptr));
 
     // build a image-view for the draw image to use for rendering
@@ -464,6 +482,113 @@ void VulkanEngine::init_pipelines()
 {
     init_background_pipelines();
 	init_triangle_pipeline();
+    init_mesh_pipeline();
+}
+
+void VulkanEngine::init_mesh_pipeline()
+{
+	// load the triangle fragment shader
+    VkShaderModule triangleFragShader;
+    if (vkutil::load_shader_module(
+        SHADER_PATH_TRIANGLE_FRAG, _device, &triangleFragShader)) {
+        fmt::println("Triangle fragment shader succesfully loaded");
+    }
+    else {
+        fmt::println("Error when building the triangle fragment shader module");
+    };
+
+	// load the triangle vertex shader
+    VkShaderModule triangleVertexShader;
+    if (vkutil::load_shader_module(
+        SHADER_PATH_TRIANGLE_MESH_VERT, _device, &triangleVertexShader)) {
+        fmt::println("Triangle vertex shader succesfully loaded");
+    }
+    else {
+        fmt::println("Error when building the triangle vertex shader module");
+	};
+
+    VkPushConstantRange pushConstantRange{
+        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+        .offset = 0,
+        .size = sizeof(GPUDrawPushConstants),
+	};
+
+
+	VkPipelineLayoutCreateInfo pipeline_layout_info = vkinit::pipeline_layout_create_info();
+    pipeline_layout_info.pPushConstantRanges = &pushConstantRange;
+    pipeline_layout_info.pushConstantRangeCount = 1;
+
+
+	vkCreatePipelineLayout(_device, &pipeline_layout_info, nullptr, &_meshPipelineLayout);
+
+
+    vkutil:: PipelineBuilder pipelineBuilder;
+
+    //use the triangle layout we created
+    pipelineBuilder._pipelineLayout = _meshPipelineLayout;
+    //connecting the vertex and pixel shaders to the pipeline
+    pipelineBuilder.set_shaders(triangleVertexShader, triangleFragShader);
+    //it will draw triangles
+    pipelineBuilder.set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+    //filled triangles
+    pipelineBuilder.set_polygon_mode(VK_POLYGON_MODE_FILL);
+    //no backface culling
+    pipelineBuilder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+    //no multisampling
+    pipelineBuilder.set_multisampling_none();
+    //no blending
+    pipelineBuilder.disable_blending();
+
+    pipelineBuilder.disable_depthtest();
+
+    //connect the image format we will draw into, from draw image
+    pipelineBuilder.set_color_attachment_format(_drawImage.imageFormat);
+    pipelineBuilder.set_depth_format(VK_FORMAT_UNDEFINED);
+
+    //finally build the pipeline
+    _meshPipeline = pipelineBuilder.build_pipeline(_device);
+
+    //clean structures
+    vkDestroyShaderModule(_device, triangleFragShader, nullptr);
+    vkDestroyShaderModule(_device, triangleVertexShader, nullptr);
+
+    _mainDeletionQueue.push_function([&]() {
+        vkDestroyPipelineLayout(_device, _meshPipelineLayout, nullptr);
+        vkDestroyPipeline(_device, _meshPipeline, nullptr);
+        });
+}
+
+void VulkanEngine::init_default_data() {
+    std::array<Vertex, 4> rect_vertices;
+
+    rect_vertices[0].position = { 0.5,-0.5, 0 };
+    rect_vertices[1].position = { 0.5,0.5, 0 };
+    rect_vertices[2].position = { -0.5,-0.5, 0 };
+    rect_vertices[3].position = { -0.5,0.5, 0 };
+
+    rect_vertices[0].color = { 0,0, 0,1 };
+    rect_vertices[1].color = { 0.5,0.5,0.5 ,1 };
+    rect_vertices[2].color = { 1,0, 0,1 };
+    rect_vertices[3].color = { 0,1, 0,1 };
+
+    std::array<uint32_t, 6> rect_indices;
+
+    rect_indices[0] = 0;
+    rect_indices[1] = 1;
+    rect_indices[2] = 2;
+
+    rect_indices[3] = 2;
+    rect_indices[4] = 1;
+    rect_indices[5] = 3;
+
+    _rectangle = uploadMesh(rect_indices, rect_vertices);
+
+    //delete the rectangle data on engine shutdown
+    _mainDeletionQueue.push_function([&]() {
+        destroy_buffer(_rectangle.indexBuffer);
+        destroy_buffer(_rectangle.vertexBuffer);
+        });
+
 }
 
 void VulkanEngine::init_background_pipelines()
@@ -487,14 +612,14 @@ void VulkanEngine::init_background_pipelines()
     VK_CHECK(vkCreatePipelineLayout(_device, &computeLayout, nullptr, &_gradientPipelineLayout));
 
     VkShaderModule gradientShader{};
-    if (!vkutil::load_shader_module("../../shaders/gradient_color.comp.spv", _device, &gradientShader)) {
+    if (!vkutil::load_shader_module(SHADER_PATH_GRADIENTCOLOR_COMP, _device, &gradientShader)) {
 
         fmt::print(stderr, "Failed to load gradientShader module\n");
         return;
     }
 
     VkShaderModule skyShader{};
-	if (!vkutil::load_shader_module("../../shaders/sky.comp.spv", _device, &skyShader)) {
+	if (!vkutil::load_shader_module(SHADER_PATH_SKY_COMP, _device, &skyShader)) {
 		fmt::print(stderr, "Failed to load skyShader module\n");
 		return;
 	}
@@ -554,7 +679,7 @@ void VulkanEngine::init_background_pipelines()
 void VulkanEngine::init_triangle_pipeline()
 {
     VkShaderModule triangleFragShader;
-    if (!vkutil::load_shader_module("../../shaders/colored_triangle.frag.spv", _device, &triangleFragShader)) {
+    if (!vkutil::load_shader_module(SHADER_PATH_TRIANGLE_FRAG, _device, &triangleFragShader)) {
         fmt::println("Error when building the triangle fragment shader module");
     }
     else {
@@ -562,7 +687,7 @@ void VulkanEngine::init_triangle_pipeline()
     }
 
     VkShaderModule triangleVertexShader;
-    if (!vkutil::load_shader_module("../../shaders/colored_triangle.vert.spv", _device, &triangleVertexShader)) {
+    if (!vkutil::load_shader_module(SHADER_PATH_TRIANGLE_VERT, _device, &triangleVertexShader)) {
         fmt::println("Error when building the triangle vertex shader module");
     }
     else {
@@ -576,7 +701,7 @@ void VulkanEngine::init_triangle_pipeline()
     vkutil::PipelineBuilder pipelineBuilder{};
     pipelineBuilder._pipelineLayout = _trianglePipelineLayout,
 	pipelineBuilder.set_shaders(triangleVertexShader, triangleFragShader);
-	pipelineBuilder.set_input_typology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+	pipelineBuilder.set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
 	pipelineBuilder.set_polygon_mode(VK_POLYGON_MODE_FILL);
 	pipelineBuilder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
 	pipelineBuilder.set_multisampling_none();
@@ -585,7 +710,7 @@ void VulkanEngine::init_triangle_pipeline()
 	pipelineBuilder.set_color_attachment_format(_drawImage.imageFormat);
 	pipelineBuilder.set_depth_format(VK_FORMAT_UNDEFINED);
 
-	_trianglePipeline = pipelineBuilder.builder_Pipeline(_device);
+	_trianglePipeline = pipelineBuilder.build_pipeline(_device);
 
     vkDestroyShaderModule(_device, triangleFragShader, nullptr);
 	vkDestroyShaderModule(_device, triangleVertexShader, nullptr);

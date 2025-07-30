@@ -103,6 +103,12 @@ public:
 	VkPipelineLayout _trianglePipelineLayout{ VK_NULL_HANDLE };
 	VkPipeline _trianglePipeline{ VK_NULL_HANDLE };
 
+	VkPipelineLayout _meshPipelineLayout{ VK_NULL_HANDLE };
+	VkPipeline _meshPipeline{ VK_NULL_HANDLE };
+
+	GPUMeshBuffers _rectangle;
+
+
 	std::vector<ComputeEffect> backgroundEffects;
 	int currentBachgroundEffect{ 0 };
 
@@ -131,6 +137,9 @@ private:
 	void init_pipelines();
 	void init_background_pipelines();
 	void init_triangle_pipeline();
+	void init_mesh_pipeline();
+	void init_default_data();
+
 
 	void create_swapchain(uint32_t width, uint32_t height);
 	void destroy_swapchain();

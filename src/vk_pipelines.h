@@ -23,11 +23,11 @@ namespace vkutil {
 
 		void Clear();
 
-		VkPipeline builder_Pipeline(VkDevice device);
+		VkPipeline build_pipeline(VkDevice device);
 
 		void set_shaders(VkShaderModule vertexShader, VkShaderModule fragmentShader);
 
-		void set_input_typology(VkPrimitiveTopology topology);
+		void set_input_topology(VkPrimitiveTopology topology);
 
 		void set_polygon_mode(VkPolygonMode polygonMode);
 

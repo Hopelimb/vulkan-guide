@@ -51,7 +51,7 @@ bool vkutil::load_shader_module(const char* filePath,
 }
 //< load_shader
 
-VkPipeline vkutil::PipelineBuilder::builder_Pipeline(VkDevice device)
+VkPipeline vkutil::PipelineBuilder::build_pipeline(VkDevice device)
 {
     VkPipelineViewportStateCreateInfo viewportState{
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
@@ -125,7 +125,7 @@ void vkutil::PipelineBuilder::set_shaders(VkShaderModule vertexShader, VkShaderM
     );
 }
 
-void vkutil::PipelineBuilder::set_input_typology(VkPrimitiveTopology topology)
+void vkutil::PipelineBuilder::set_input_topology(VkPrimitiveTopology topology)
 {
 	_inputAssembly.topology = topology;
 
