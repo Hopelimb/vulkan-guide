@@ -592,7 +592,7 @@ void VulkanEngine::init_mesh_pipeline()
     pipelineBuilder.disable_blending();
 
     pipelineBuilder.enable_depthtest(true, VK_COMPARE_OP_GREATER_OR_EQUAL);
-
+    pipelineBuilder.enable_blending_additive();
     //connect the image format we will draw into, from draw image
     pipelineBuilder.set_color_attachment_format(_drawImage.imageFormat);
     pipelineBuilder.set_depth_format(_depthImage.imageFormat);

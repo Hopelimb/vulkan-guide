@@ -158,5 +158,4 @@ private:
 
 	void destroy_buffer(const AllocatedBuffer& buffer);
 
-
 };
