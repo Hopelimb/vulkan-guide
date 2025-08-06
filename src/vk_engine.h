@@ -5,6 +5,8 @@
 
 #include <vk_types.h>
 #include <vk_descriptors.h>
+#include <vk_loader.h>
+
 
 struct DeletionQueue
 {
@@ -88,6 +90,7 @@ public:
 	DeletionQueue _mainDeletionQueue{};
 	VmaAllocator _allocator{ VK_NULL_HANDLE };
 	AllocatedImage _drawImage{};
+	AllocatedImage _depthImage{};
 	VkExtent2D _drawExtent{};
 
 	//VkPipeline _gradientPipeline{ VK_NULL_HANDLE };
@@ -100,14 +103,14 @@ public:
 	VkCommandBuffer _immCommandBuffer{ VK_NULL_HANDLE };
 	VkCommandPool _immCommandPool{ VK_NULL_HANDLE };
 
-	VkPipelineLayout _trianglePipelineLayout{ VK_NULL_HANDLE };
-	VkPipeline _trianglePipeline{ VK_NULL_HANDLE };
+	//VkPipelineLayout _trianglePipelineLayout{ VK_NULL_HANDLE };
+	//VkPipeline _trianglePipeline{ VK_NULL_HANDLE };
 
 	VkPipelineLayout _meshPipelineLayout{ VK_NULL_HANDLE };
 	VkPipeline _meshPipeline{ VK_NULL_HANDLE };
 
-	GPUMeshBuffers _rectangle;
-
+	//GPUMeshBuffers _rectangle;
+	std::vector<std::shared_ptr<MeshAsset>> testMeshes;
 
 	std::vector<ComputeEffect> backgroundEffects;
 	int currentBachgroundEffect{ 0 };
@@ -125,6 +128,7 @@ public:
 
 	//run main loop
 	void run();
+	GPUMeshBuffers uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
 
 
 private:
@@ -136,7 +140,7 @@ private:
 
 	void init_pipelines();
 	void init_background_pipelines();
-	void init_triangle_pipeline();
+	//void init_triangle_pipeline();
 	void init_mesh_pipeline();
 	void init_default_data();
 
@@ -155,5 +159,4 @@ private:
 	void destroy_buffer(const AllocatedBuffer& buffer);
 
 
-	GPUMeshBuffers uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
 };

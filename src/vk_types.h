@@ -33,7 +33,7 @@
 struct AllocatedImage {
     VkImage image;
     VkImageView imageView;
-    VmaAllocation allocation;
+	VmaAllocation allocation;
     VkExtent3D imageExtent;
     VkFormat imageFormat;
 };
