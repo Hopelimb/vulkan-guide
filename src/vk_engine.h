@@ -33,8 +33,19 @@ struct FrameData {
 	VkSemaphore _swapchainSemaphore{ VK_NULL_HANDLE }, _renderSemaphore{ VK_NULL_HANDLE };
 	VkFence _renderFence{ VK_NULL_HANDLE };
 
-	DeletionQueue _deletionQueue;
+	DeletionQueue _deletionQueue{};
+	DesciptorAllocatorGrowable _frameDescriptors{};
 };
+
+struct GPUSceneData {
+	glm::mat4 view;
+	glm::mat4 proj;
+	glm::mat4 viewport;
+	glm::vec4 ambientColor;
+	glm::vec4 sunlightDirection;
+	glm::vec4 sunlightColor;
+};
+
 
 struct ComputePushConstants {
 	glm::vec4 data1;
@@ -115,6 +126,12 @@ public:
 	std::vector<ComputeEffect> backgroundEffects;
 	int currentBachgroundEffect{ 0 };
 
+	bool resize_requested{ false };
+	float renderScale{ 1.0f }; // scale the rendering to fit the window
+
+	GPUSceneData sceneData{};
+	VkDescriptorSetLayout _gpuSceneDataDescriptorLayout{ VK_NULL_HANDLE };
+
 	//initializes everything in the engine
 	void init();
 
@@ -157,5 +174,5 @@ private:
 	AllocatedBuffer create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
 
 	void destroy_buffer(const AllocatedBuffer& buffer);
-
+	void resize_swapchain();
 };

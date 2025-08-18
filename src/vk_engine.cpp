@@ -40,7 +40,7 @@ void VulkanEngine::init()
     // We initialize SDL and create a window with it.
     SDL_Init(SDL_INIT_VIDEO);
 
-    SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_VULKAN);
+    SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
 
     _window = SDL_CreateWindow(
         "Vulkan Engine",
@@ -76,7 +76,6 @@ void VulkanEngine::cleanup()
             destroy_buffer(mesh->meshBuffers.vertexBuffer);
         }
 
-        _mainDeletionQueue.flush();
 
         for (int i = 0; i < FRAME_OVERLAP; i++) {
             vkDestroyCommandPool(_device, _frames[i]._commandPool, nullptr);
@@ -87,6 +86,7 @@ void VulkanEngine::cleanup()
             _frames[i]._deletionQueue.flush();
         }
 
+        _mainDeletionQueue.flush();
 
         destroy_swapchain();
 
@@ -108,10 +108,18 @@ void VulkanEngine::draw()
     VK_CHECK(vkWaitForFences(_device, 1, &get_current_frame()._renderFence, true, TIMEOUT));
     // reset the deletion queue for the current frame
     get_current_frame()._deletionQueue.flush();
+    get_current_frame()._frameDescriptors.clear_pools(_device);
+
     VK_CHECK(vkResetFences(_device, 1, &get_current_frame()._renderFence));
     // acquire next image from the swapchain
     uint32_t swapchainImageIndex;
-    VK_CHECK(vkAcquireNextImageKHR(_device, _swapchain, TIMEOUT, get_current_frame()._swapchainSemaphore, VK_NULL_HANDLE, &swapchainImageIndex));
+    {
+        auto result = vkAcquireNextImageKHR(_device, _swapchain, TIMEOUT, get_current_frame()._swapchainSemaphore, VK_NULL_HANDLE, &swapchainImageIndex);
+        if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+			resize_requested = true;
+            return;
+        }
+    }
     VkCommandBuffer cmd = get_current_frame()._mainCommandBuffer;
     VK_CHECK(vkResetCommandBuffer(cmd, 0));
     // this is a one-time submit command buffer, so we use the VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT flag to get better performance
@@ -120,8 +128,11 @@ void VulkanEngine::draw()
 
 #pragma region record command buffer
     {
-        _drawExtent.width = _drawImage.imageExtent.width;
-        _drawExtent.height = _drawImage.imageExtent.height;
+
+        _drawExtent.height = std::min(_swapchainExtent.height, _drawImage.imageExtent.height) * renderScale;
+        _drawExtent.width = std::min(_swapchainExtent.width, _drawImage.imageExtent.width) * renderScale;
+        //_drawExtent.width = _drawImage.imageExtent.width;
+        //_drawExtent.height = _drawImage.imageExtent.height;
 
         vkutil::transition_image(cmd, _drawImage.image,
             VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
@@ -176,7 +187,15 @@ void VulkanEngine::draw()
         .pSwapchains = &_swapchain,
         .pImageIndices = &swapchainImageIndex,
     };
-    VK_CHECK(vkQueuePresentKHR(_graphicsQueue, &presentinfo));
+    {
+		auto result = vkQueuePresentKHR(_graphicsQueue, &presentinfo);
+        if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
+            resize_requested = true;
+        }
+        else {
+            VK_CHECK(result);
+		}
+    }
 
     _frameNumber++;
 }
@@ -263,6 +282,25 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
 
     vkCmdDrawIndexed(cmd, testMeshes[2]->surface[0].count,1, testMeshes[2]->surface[0].startIndex, 0, 0);
 
+    //allocate a new uniform buffer for the scene data
+    AllocatedBuffer gpuSceneDataBuffer = create_buffer(sizeof(GPUSceneData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+
+    //add it to the deletion queue of this frame so it gets deleted once its been used
+    get_current_frame()._deletionQueue.push_function([=, this]() {
+        destroy_buffer(gpuSceneDataBuffer);
+        });
+
+    //write the buffer
+    GPUSceneData* sceneUniformData = (GPUSceneData*)gpuSceneDataBuffer.allocation->GetMappedData();
+    *sceneUniformData = sceneData;
+
+    //create a descriptor set that binds that buffer and update it
+    VkDescriptorSet globalDescriptor = get_current_frame()._frameDescriptors.allocate(_device, _gpuSceneDataDescriptorLayout);
+
+    DescriptorWriter writer;
+    writer.write_buffer(0, gpuSceneDataBuffer.buffer, sizeof(GPUSceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+    writer.update_set(_device, globalDescriptor);
+
 	vkCmdEndRendering(cmd);
 }
 
@@ -291,6 +329,10 @@ void VulkanEngine::run()
 			ImGui_ImplSDL2_ProcessEvent(&e);
         }
 
+        if (resize_requested) {
+            resize_swapchain();
+		}
+
         // do not draw if we are minimized
         if (stop_rendering) {
             // throttle the speed to avoid the endless spinning
@@ -312,7 +354,7 @@ void VulkanEngine::run()
             ImGui::InputFloat4("data2", (float*)&currentEffect.data.data2);
             ImGui::InputFloat4("data3", (float*)&currentEffect.data.data3);
             ImGui::InputFloat4("data4", (float*)&currentEffect.data.data4);
-
+            ImGui::SliderFloat("Render Scale", &renderScale, 0.3f, 1.f);
             ImGui::End();
         }
 
@@ -500,34 +542,42 @@ void VulkanEngine::init_descriptors()
 
     _globalDescriptorAllocator.init_pool(_device, 10, sizes);
 
-    DsecriptorLayoutBuilder builder{};
-    builder.add_binding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
-    _drawImageDescriptorLayout = builder.build(_device, VK_SHADER_STAGE_COMPUTE_BIT);
-
-    _drawImageDescriptor = _globalDescriptorAllocator.allocate(_device, _drawImageDescriptorLayout);
-    VkDescriptorImageInfo imgInfo
     {
-        .imageView = _drawImage.imageView,
-        .imageLayout = VK_IMAGE_LAYOUT_GENERAL,
-    };
-
-    VkWriteDescriptorSet drawImageWrite{
-        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-        .pNext = nullptr,
-        .dstSet = _drawImageDescriptor,
-        .dstBinding = 0,
-        .descriptorCount = 1,
-        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-        .pImageInfo = &imgInfo,
-    };
-
-    vkUpdateDescriptorSets(_device, 1, &drawImageWrite, 0, nullptr);
+        DescriptorLayoutBuilder builder{};
+        builder.add_binding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+        _drawImageDescriptorLayout = builder.build(_device, VK_SHADER_STAGE_COMPUTE_BIT);
+        _drawImageDescriptor = _globalDescriptorAllocator.allocate(_device, _drawImageDescriptorLayout);
+        DescriptorWriter writer{};
+        writer.write_Image(0, _drawImage.imageView, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+        writer.update_set(_device, _drawImageDescriptor);
+    }
+    {
+        DescriptorLayoutBuilder builder{};
+        builder.add_binding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+        _gpuSceneDataDescriptorLayout = builder.build(_device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+    }
 
     _mainDeletionQueue.push_function([&]() {
         _globalDescriptorAllocator.destroy_pool(_device);
         vkDestroyDescriptorSetLayout(_device, _drawImageDescriptorLayout, nullptr);
+        vkDestroyDescriptorSetLayout(_device, _gpuSceneDataDescriptorLayout, nullptr);
         });
 
+
+    for (int i= 0; i < FRAME_OVERLAP; i++) {
+        std::vector<DesciptorAllocatorGrowable::PoolSizeRatio> frame_sizes{
+            {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 3},
+			{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3},
+			{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 3},
+			{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4},
+        };
+        _frames[i]._frameDescriptors = DesciptorAllocatorGrowable{};
+		_frames[i]._frameDescriptors.init(_device, 1000, frame_sizes);
+
+        _mainDeletionQueue.push_function([&, i]() {
+            _frames[i]._frameDescriptors.destroy_pools(_device);
+			});
+	}
 }
 
 void VulkanEngine::init_pipelines()
@@ -925,6 +975,22 @@ AllocatedBuffer VulkanEngine::create_buffer(size_t allocSize, VkBufferUsageFlags
 void VulkanEngine::destroy_buffer(const AllocatedBuffer& buffer)
 {
 	vmaDestroyBuffer(_allocator, buffer.buffer, buffer.allocation);
+}
+
+void VulkanEngine::resize_swapchain()
+{
+
+	vkDeviceWaitIdle(_device);
+
+    destroy_swapchain();
+
+    int w, h;
+    SDL_GetWindowSize(_window, &w, &h);
+	_windowExtent.width = w;
+    _windowExtent.height = h;
+    // recreate the swapchain
+    create_swapchain(_windowExtent.width, _windowExtent.height);
+	resize_requested = false;
 }
 
 GPUMeshBuffers VulkanEngine::uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices)
