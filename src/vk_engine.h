@@ -132,6 +132,14 @@ public:
 	GPUSceneData sceneData{};
 	VkDescriptorSetLayout _gpuSceneDataDescriptorLayout{ VK_NULL_HANDLE };
 
+	AllocatedImage _whiteImage{};
+	AllocatedImage _blackImage{};
+	AllocatedImage _greyImage{};
+	AllocatedImage _errorCheckerboardImage{};
+
+	VkSampler _defaultSamplerLinear{ VK_NULL_HANDLE };
+	VkSampler _defaultSamplerNearest{ VK_NULL_HANDLE };
+
 	//initializes everything in the engine
 	void init();
 
@@ -175,4 +183,8 @@ private:
 
 	void destroy_buffer(const AllocatedBuffer& buffer);
 	void resize_swapchain();
+
+	AllocatedImage create_image(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
+	AllocatedImage create_image(void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
+	void destroy_image(const AllocatedImage& image);
 };
