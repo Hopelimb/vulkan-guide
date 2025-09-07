@@ -27,6 +27,7 @@ VulkanEngine* loadedEngine = nullptr;
 const char* SHADER_PATH_TRIANGLE_VERT = "../../shaders/colored_triangle.vert.spv";
 const char* SHADER_PATH_TRIANGLE_MESH_VERT = "../../shaders/colored_triangle_mesh.vert.spv";
 const char* SHADER_PATH_TRIANGLE_FRAG = "../../shaders/colored_triangle.frag.spv";
+const char* SHADER_PATH_IMAGE_FRAG = "../../shaders/tex_image.frag.spv";
 const char* SHADER_PATH_GRADIENTCOLOR_COMP = "../../shaders/gradient_color.comp.spv";
 const char* SHADER_PATH_SKY_COMP = "../../shaders/sky.comp.spv";
 
@@ -239,6 +240,18 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
 
 
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _meshPipeline);
+
+    VkDescriptorSet imageset = get_current_frame()._frameDescriptors.allocate(_device,
+        _singleImageDescriptorlayout);
+    {
+        DescriptorWriter writer;
+        writer.write_Image(0, _errorCheckerboardImage.imageView, _defaultSamplerNearest,
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+        writer.update_set(_device, imageset);
+    }
+
+
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _meshPipelineLayout, 0, 1, &imageset, 0, nullptr);
 
     //vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _trianglePipeline);
     VkViewport viewport{
@@ -556,11 +569,16 @@ void VulkanEngine::init_descriptors()
         builder.add_binding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
         _gpuSceneDataDescriptorLayout = builder.build(_device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
     }
-
+    {
+        DescriptorLayoutBuilder builder;
+        builder.add_binding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+        _singleImageDescriptorlayout = builder.build(_device, VK_SHADER_STAGE_FRAGMENT_BIT);
+    }
     _mainDeletionQueue.push_function([&]() {
         _globalDescriptorAllocator.destroy_pool(_device);
         vkDestroyDescriptorSetLayout(_device, _drawImageDescriptorLayout, nullptr);
         vkDestroyDescriptorSetLayout(_device, _gpuSceneDataDescriptorLayout, nullptr);
+        vkDestroyDescriptorSetLayout(_device, _singleImageDescriptorlayout, nullptr);
         });
 
 
@@ -589,10 +607,18 @@ void VulkanEngine::init_pipelines()
 
 void VulkanEngine::init_mesh_pipeline()
 {
-	// load the triangle fragment shader
-    VkShaderModule triangleFragShader;
+	//// load the triangle fragment shader
+ //   VkShaderModule triangleFragShader;
+ //   if (vkutil::load_shader_module(
+ //       SHADER_PATH_TRIANGLE_FRAG, _device, &triangleFragShader)) {
+ //       fmt::println("Triangle fragment shader succesfully loaded");
+ //   }
+ //   else {
+ //       fmt::println("Error when building the triangle fragment shader module");
+ //   };
+    VkShaderModule texImageFragShader;
     if (vkutil::load_shader_module(
-        SHADER_PATH_TRIANGLE_FRAG, _device, &triangleFragShader)) {
+        SHADER_PATH_IMAGE_FRAG, _device, &texImageFragShader)) {
         fmt::println("Triangle fragment shader succesfully loaded");
     }
     else {
@@ -609,19 +635,26 @@ void VulkanEngine::init_mesh_pipeline()
         fmt::println("Error when building the triangle vertex shader module");
 	};
 
-    VkPushConstantRange pushConstantRange{
+ //   VkPushConstantRange pushConstantRange{
+ //       .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+ //       .offset = 0,
+ //       .size = sizeof(GPUDrawPushConstants),
+	//};
+
+    VkPushConstantRange bufferRange{
         .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
         .offset = 0,
         .size = sizeof(GPUDrawPushConstants),
-	};
-
+    };
 
 	VkPipelineLayoutCreateInfo pipeline_layout_info = vkinit::pipeline_layout_create_info();
-    pipeline_layout_info.pPushConstantRanges = &pushConstantRange;
+    pipeline_layout_info.pPushConstantRanges = &bufferRange;
     pipeline_layout_info.pushConstantRangeCount = 1;
+    pipeline_layout_info.pSetLayouts = &_singleImageDescriptorlayout;
+    pipeline_layout_info.setLayoutCount = 1;
 
 
-	vkCreatePipelineLayout(_device, &pipeline_layout_info, nullptr, &_meshPipelineLayout);
+	VK_CHECK(vkCreatePipelineLayout(_device, &pipeline_layout_info, nullptr, &_meshPipelineLayout));
 
 
     vkutil:: PipelineBuilder pipelineBuilder;
@@ -629,7 +662,7 @@ void VulkanEngine::init_mesh_pipeline()
     //use the triangle layout we created
     pipelineBuilder._pipelineLayout = _meshPipelineLayout;
     //connecting the vertex and pixel shaders to the pipeline
-    pipelineBuilder.set_shaders(triangleVertexShader, triangleFragShader);
+    pipelineBuilder.set_shaders(triangleVertexShader, texImageFragShader);
     //it will draw triangles
     pipelineBuilder.set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
     //filled triangles
@@ -642,7 +675,8 @@ void VulkanEngine::init_mesh_pipeline()
     pipelineBuilder.disable_blending();
 
     pipelineBuilder.enable_depthtest(true, VK_COMPARE_OP_GREATER_OR_EQUAL);
-    pipelineBuilder.enable_blending_additive();
+    //pipelineBuilder.enable_blending_additive();
+    pipelineBuilder.enable_blending_alpha();
     //connect the image format we will draw into, from draw image
     pipelineBuilder.set_color_attachment_format(_drawImage.imageFormat);
     pipelineBuilder.set_depth_format(_depthImage.imageFormat);
@@ -651,7 +685,7 @@ void VulkanEngine::init_mesh_pipeline()
     _meshPipeline = pipelineBuilder.build_pipeline(_device);
 
     //clean structures
-    vkDestroyShaderModule(_device, triangleFragShader, nullptr);
+    vkDestroyShaderModule(_device, texImageFragShader, nullptr);
     vkDestroyShaderModule(_device, triangleVertexShader, nullptr);
 
     _mainDeletionQueue.push_function([&]() {
@@ -1074,6 +1108,9 @@ AllocatedImage VulkanEngine::create_image(VkExtent3D size, VkFormat format, VkIm
         format,
         newImage.image,
         aspectFlag);
+    view_info.subresourceRange.levelCount = img_info.mipLevels;
+
+    VK_CHECK(vkCreateImageView(_device, &view_info, nullptr, &newImage.imageView));
 
     return newImage;
 }

@@ -140,6 +140,8 @@ public:
 	VkSampler _defaultSamplerLinear{ VK_NULL_HANDLE };
 	VkSampler _defaultSamplerNearest{ VK_NULL_HANDLE };
 
+	VkDescriptorSetLayout _singleImageDescriptorlayout;
+
 	//initializes everything in the engine
 	void init();
 
