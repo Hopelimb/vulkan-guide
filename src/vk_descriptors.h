@@ -45,7 +45,7 @@ struct DescriptorWriter {
 };
 
 
-struct DesciptorAllocatorGrowable {
+struct DescriptorAllocatorGrowable {
 public:
 	struct PoolSizeRatio {
 		VkDescriptorType type;

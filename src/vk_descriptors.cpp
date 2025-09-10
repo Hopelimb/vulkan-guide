@@ -89,7 +89,7 @@ VkDescriptorSet DescriptorAllocator::allocate(VkDevice device, VkDescriptorSetLa
 	return ds;
 }
 
-void DesciptorAllocatorGrowable::init(VkDevice device, uint32_t maxSets, std::span<PoolSizeRatio> poolRatios)
+void DescriptorAllocatorGrowable::init(VkDevice device, uint32_t maxSets, std::span<PoolSizeRatio> poolRatios)
 {
 	ratios.clear();
 
@@ -104,7 +104,7 @@ void DesciptorAllocatorGrowable::init(VkDevice device, uint32_t maxSets, std::sp
 	readyPools.push_back(newPool);
 }
 
-void DesciptorAllocatorGrowable::clear_pools(VkDevice device)
+void DescriptorAllocatorGrowable::clear_pools(VkDevice device)
 {
 
 	for (auto p : readyPools) {
@@ -120,7 +120,7 @@ void DesciptorAllocatorGrowable::clear_pools(VkDevice device)
 	fullPools.clear();
 }
 
-void DesciptorAllocatorGrowable::destroy_pools(VkDevice device)
+void DescriptorAllocatorGrowable::destroy_pools(VkDevice device)
 {
 	for (auto p : readyPools) {
 		vkDestroyDescriptorPool(device, p, nullptr);
@@ -132,7 +132,7 @@ void DesciptorAllocatorGrowable::destroy_pools(VkDevice device)
 	fullPools.clear();
 }
 
-VkDescriptorSet DesciptorAllocatorGrowable::allocate(VkDevice device, VkDescriptorSetLayout layout, void* pNext)
+VkDescriptorSet DescriptorAllocatorGrowable::allocate(VkDevice device, VkDescriptorSetLayout layout, void* pNext)
 {
 
 	VkDescriptorPool poolToUse = get_pool(device);
@@ -162,7 +162,7 @@ VkDescriptorSet DesciptorAllocatorGrowable::allocate(VkDevice device, VkDescript
 	return ds;
 }
 
-VkDescriptorPool DesciptorAllocatorGrowable::get_pool(VkDevice device)
+VkDescriptorPool DescriptorAllocatorGrowable::get_pool(VkDevice device)
 {
 	VkDescriptorPool newPool;
 	if (readyPools.size() != 0) {
@@ -182,7 +182,7 @@ VkDescriptorPool DesciptorAllocatorGrowable::get_pool(VkDevice device)
 	return newPool;
 }
 
-VkDescriptorPool DesciptorAllocatorGrowable::create_pool(VkDevice device, uint32_t setCount, std::span<PoolSizeRatio> poolRatios)
+VkDescriptorPool DescriptorAllocatorGrowable::create_pool(VkDevice device, uint32_t setCount, std::span<PoolSizeRatio> poolRatios)
 {
 	std::vector<VkDescriptorPoolSize> poolSizes;
 	// Create the pool sizes based on the ratios provided

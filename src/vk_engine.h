@@ -34,7 +34,7 @@ struct FrameData {
 	VkFence _renderFence{ VK_NULL_HANDLE };
 
 	DeletionQueue _deletionQueue{};
-	DesciptorAllocatorGrowable _frameDescriptors{};
+	DescriptorAllocatorGrowable _frameDescriptors{};
 };
 
 struct GPUSceneData {
@@ -64,6 +64,36 @@ struct ComputeEffect {
 };
 
 constexpr unsigned int FRAME_OVERLAP = 2; // number of frames in flight
+
+
+struct GLTFMetalic_Roughness {
+	MaterialPipeline opaquePipeline;
+	MaterialPipeline transparentPipeline;
+
+	VkDescriptorSetLayout materialLayout;
+
+	struct MaterialConstants {
+		glm::vec4 colorFactors;
+		glm::vec4 metal_rough_factors;
+		glm::vec4 extra[14];
+	};
+
+	struct MaterialResources {
+		AllocatedImage colorImage;
+		VkSampler colorSampler;
+		AllocatedImage metalRoughImage;
+		VkSampler metalRoughSampler;
+		VkBuffer dataBuffer;
+		uint32_t dataBufferOffset;
+	};
+
+	DescriptorWriter writer;
+
+	void build_pipelines(VulkanEngine* engine);
+	void clear_resources(VkDevice device);
+
+	MaterialInstance write_material(VkDevice device, MaterialPass pass, const MaterialResources& resources, DescriptorAllocator& descriptorAllocator);
+};
 
 class VulkanEngine {
 public:
@@ -141,6 +171,9 @@ public:
 	VkSampler _defaultSamplerNearest{ VK_NULL_HANDLE };
 
 	VkDescriptorSetLayout _singleImageDescriptorlayout;
+
+	MaterialInstance defaultMaterial;
+	GLTFMetalic_Roughness metalRoughMaterial;
 
 	//initializes everything in the engine
 	void init();
