@@ -42,7 +42,7 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> loadGltfMeshes(VulkanEngi
 	for (auto& mesh : gltf.meshes) {
 		MeshAsset newMesh{};
 		newMesh.name = mesh.name;
-
+		 
 		indices.clear();
 		vertices.clear();
 
@@ -111,10 +111,10 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> loadGltfMeshes(VulkanEngi
 			}
 
 
-			newMesh.surface.push_back(newSurface);
+			newMesh.surfaces.push_back(newSurface);
 		}
 
-		constexpr bool OverrideColors = true;
+		constexpr bool OverrideColors = false;
 
 		if (OverrideColors) {
 			for (auto& vtx : vertices) {

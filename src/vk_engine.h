@@ -40,7 +40,7 @@ struct FrameData {
 struct GPUSceneData {
 	glm::mat4 view;
 	glm::mat4 proj;
-	glm::mat4 viewport;
+	glm::mat4 viewporj;
 	glm::vec4 ambientColor;
 	glm::vec4 sunlightDirection;
 	glm::vec4 sunlightColor;
@@ -65,6 +65,18 @@ struct ComputeEffect {
 
 constexpr unsigned int FRAME_OVERLAP = 2; // number of frames in flight
 
+
+struct Vertex {
+	glm::vec3 position;
+	float uv_x;
+	glm::vec3 normal;
+	float uv_y;
+	glm::vec4 color;
+};
+
+struct VertexBuffer {
+	Vertex vertices[];
+};
 
 struct GLTFMetalic_Roughness {
 	MaterialPipeline opaquePipeline;
@@ -94,6 +106,31 @@ struct GLTFMetalic_Roughness {
 
 	MaterialInstance write_material(VkDevice device, MaterialPass pass, const MaterialResources& resources, DescriptorAllocator& descriptorAllocator);
 };
+
+struct MeshNode : public Node {
+
+	std::shared_ptr<MeshAsset> mesh;
+
+	virtual void Draw(const glm::mat4& topMatrix, DrawContext& ctx) override;
+};
+
+struct RenderObject {
+
+	uint32_t indexCount{ 0 };
+	uint32_t firstIndex{ 0 };
+	VkBuffer indexBuffer{ VK_NULL_HANDLE };
+
+	MaterialInstance* material{ nullptr };
+
+	glm::mat4 transform;
+	VkDeviceAddress vertexBufferAddress{ 0 };
+};
+
+struct DrawContext {
+
+	std::vector<RenderObject> OpaqueSurfaces;
+};
+
 
 class VulkanEngine {
 public:
@@ -147,8 +184,8 @@ public:
 	//VkPipelineLayout _trianglePipelineLayout{ VK_NULL_HANDLE };
 	//VkPipeline _trianglePipeline{ VK_NULL_HANDLE };
 
-	VkPipelineLayout _meshPipelineLayout{ VK_NULL_HANDLE };
-	VkPipeline _meshPipeline{ VK_NULL_HANDLE };
+	//VkPipelineLayout _meshPipelineLayout{ VK_NULL_HANDLE };
+	//VkPipeline _meshPipeline{ VK_NULL_HANDLE };
 
 	//GPUMeshBuffers _rectangle;
 	std::vector<std::shared_ptr<MeshAsset>> testMeshes;
@@ -175,6 +212,9 @@ public:
 	MaterialInstance defaultMaterial;
 	GLTFMetalic_Roughness metalRoughMaterial;
 
+	DrawContext mainDrawContext;
+	std::unordered_map<std::string, std::shared_ptr<Node>> loadedNodes;
+
 	//initializes everything in the engine
 	void init();
 
@@ -185,6 +225,8 @@ public:
 	void draw();
 	void draw_background(VkCommandBuffer cmd);
 	void draw_geometry(VkCommandBuffer cmd);
+
+	void update_scene();
 
 	//run main loop
 	void run();
@@ -201,7 +243,6 @@ private:
 	void init_pipelines();
 	void init_background_pipelines();
 	//void init_triangle_pipeline();
-	void init_mesh_pipeline();
 	void init_default_data();
 
 

@@ -51,9 +51,10 @@ void DescriptorAllocator::init_pool(VkDevice device, uint32_t maxSets, std::span
 		});
 	}
 
-	VkDescriptorPoolCreateInfo poolInfo 
+	VkDescriptorPoolCreateInfo poolInfo
 	{
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+		.flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT,
 		.maxSets = maxSets,	// maximum number of descriptor sets that can be allocated from this pool
 		.poolSizeCount = static_cast<uint32_t>(poolSizes.size()), // pool size count means how many different types of descriptors we can allocate
 		.pPoolSizes = poolSizes.data(),
@@ -198,7 +199,7 @@ VkDescriptorPool DescriptorAllocatorGrowable::create_pool(VkDevice device, uint3
 	}
 	VkDescriptorPoolCreateInfo poolInfo{
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-		.flags = 0,
+		.flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT,
 		.maxSets = setCount,
 		.poolSizeCount = static_cast<uint32_t>(poolSizes.size()),
 		.pPoolSizes = poolSizes.data(),
