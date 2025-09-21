@@ -54,11 +54,13 @@ struct ComputePushConstants {
 	glm::vec4 data4;
 };
 
-struct ComputeEffect {
+struct ComputePipelineObject {
 	const char* name;
 
 	VkPipeline pipeline;
 	VkPipelineLayout pipelineLayout;
+	VkDescriptorSet descriptorSet;
+	VkDescriptorSetLayout descriptorSetLayout;
 
 	ComputePushConstants data;
 };
@@ -171,26 +173,17 @@ public:
 	AllocatedImage _depthImage{};
 	VkExtent2D _drawExtent{};
 
-	//VkPipeline _gradientPipeline{ VK_NULL_HANDLE };
-	VkPipelineLayout _gradientPipelineLayout{ VK_NULL_HANDLE };
 	DescriptorAllocator _globalDescriptorAllocator{};
-	VkDescriptorSet _drawImageDescriptor{ VK_NULL_HANDLE };
-	VkDescriptorSetLayout _drawImageDescriptorLayout{ VK_NULL_HANDLE };
+	//VkDescriptorSet _drawImageDescriptor{ VK_NULL_HANDLE };
+	//VkDescriptorSetLayout _drawImageDescriptorLayout{ VK_NULL_HANDLE };
 
 	VkFence _immFence;
 	VkCommandBuffer _immCommandBuffer{ VK_NULL_HANDLE };
 	VkCommandPool _immCommandPool{ VK_NULL_HANDLE };
 
-	//VkPipelineLayout _trianglePipelineLayout{ VK_NULL_HANDLE };
-	//VkPipeline _trianglePipeline{ VK_NULL_HANDLE };
-
-	//VkPipelineLayout _meshPipelineLayout{ VK_NULL_HANDLE };
-	//VkPipeline _meshPipeline{ VK_NULL_HANDLE };
-
-	//GPUMeshBuffers _rectangle;
 	std::vector<std::shared_ptr<MeshAsset>> testMeshes;
 
-	std::vector<ComputeEffect> backgroundEffects;
+	std::vector<ComputePipelineObject> backgroundPipelines;
 	int currentBachgroundEffect{ 0 };
 
 	bool resize_requested{ false };
@@ -218,12 +211,16 @@ public:
 	//initializes everything in the engine
 	void init();
 
+	void init_window();
+
 	//shuts down the engine
 	void cleanup();
 
 	//draw loop
 	void draw();
-	void draw_background(VkCommandBuffer cmd);
+	void update_imgui();
+	void draw_recordRenderCmds(VkCommandBuffer cmd, uint32_t swapchainImageIndex);
+	void compute_background(VkCommandBuffer cmd);
 	void draw_geometry(VkCommandBuffer cmd);
 
 	void update_scene();
@@ -239,11 +236,9 @@ private:
 	void init_commands();
 	void init_sync_structures();
 	void init_descriptors();
-
 	void init_pipelines();
 	void init_background_pipelines();
-	//void init_triangle_pipeline();
-	void init_default_data();
+	void init_create_resources();
 
 
 	void create_swapchain(uint32_t width, uint32_t height);
@@ -256,11 +251,11 @@ private:
 
 
 	AllocatedBuffer create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
-
-	void destroy_buffer(const AllocatedBuffer& buffer);
-	void resize_swapchain();
-
 	AllocatedImage create_image(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
 	AllocatedImage create_image(void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
 	void destroy_image(const AllocatedImage& image);
+	void destroy_buffer(const AllocatedBuffer& buffer);
+	void resize_swapchain();
+
+	ComputePipelineObject create_compute_pipeline(const char* name, VkShaderModule shaderModule, ComputePushConstants data);
 };

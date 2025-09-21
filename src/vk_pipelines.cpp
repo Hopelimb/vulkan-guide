@@ -44,6 +44,7 @@ bool vkutil::load_shader_module(const char* filePath,
     // check that the creation goes well.
     VkShaderModule shaderModule;
     if (vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
+        fmt::print(stderr, "Failed to load {} module\n", filePath);
         return false;
     }
     *outShaderModule = shaderModule;

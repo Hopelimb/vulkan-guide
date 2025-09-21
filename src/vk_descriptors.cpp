@@ -73,7 +73,7 @@ void DescriptorAllocator::destroy_pool(VkDevice device)
 	vkDestroyDescriptorPool(device, pool, nullptr);
 }
 
-VkDescriptorSet DescriptorAllocator::allocate(VkDevice device, VkDescriptorSetLayout layout)
+VkDescriptorSet DescriptorAllocator::allocate(VkDevice device, VkDescriptorSetLayout layout) const
 {
 
 	VkDescriptorSetAllocateInfo allocInfo

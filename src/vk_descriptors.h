@@ -28,7 +28,7 @@ struct DescriptorAllocator
 	void clear_descriptors(VkDevice device);
 	void destroy_pool(VkDevice device);
 
-	VkDescriptorSet allocate(VkDevice device, VkDescriptorSetLayout layout);
+	VkDescriptorSet allocate(VkDevice device, VkDescriptorSetLayout layout) const;
 };
 
 struct DescriptorWriter {
