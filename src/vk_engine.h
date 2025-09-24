@@ -80,7 +80,7 @@ struct VertexBuffer {
 	Vertex vertices[];
 };
 
-struct GLTFMetalic_Roughness {
+struct GLTFMetallic_Roughness {
 	MaterialPipeline opaquePipeline;
 	MaterialPipeline transparentPipeline;
 
@@ -106,7 +106,7 @@ struct GLTFMetalic_Roughness {
 	void build_pipelines(VulkanEngine* engine);
 	void clear_resources(VkDevice device);
 
-	MaterialInstance write_material(VkDevice device, MaterialPass pass, const MaterialResources& resources, DescriptorAllocator& descriptorAllocator);
+	MaterialInstance write_material(VkDevice device, MaterialPass pass, const MaterialResources& resources, DescriptorAllocatorGrowable& descriptorAllocator);
 };
 
 struct MeshNode : public Node {
@@ -131,6 +131,7 @@ struct RenderObject {
 struct DrawContext {
 
 	std::vector<RenderObject> OpaqueSurfaces;
+	std::vector<RenderObject> TransparentSurfaces;
 };
 
 
@@ -173,7 +174,7 @@ public:
 	AllocatedImage _depthImage{};
 	VkExtent2D _drawExtent{};
 
-	DescriptorAllocator _globalDescriptorAllocator{};
+	DescriptorAllocatorGrowable _globalDescriptorAllocator{};
 	//VkDescriptorSet _drawImageDescriptor{ VK_NULL_HANDLE };
 	//VkDescriptorSetLayout _drawImageDescriptorLayout{ VK_NULL_HANDLE };
 
@@ -203,12 +204,14 @@ public:
 	VkDescriptorSetLayout _singleImageDescriptorlayout;
 
 	MaterialInstance defaultMaterial;
-	GLTFMetalic_Roughness metalRoughMaterial;
+	GLTFMetallic_Roughness metalRoughMaterial;
 
 	DrawContext mainDrawContext;
 	std::unordered_map<std::string, std::shared_ptr<Node>> loadedNodes;
 
 	Camera mainCamera;
+
+	std::unordered_map<std::string, std::shared_ptr<LoadedGLTF>> loadedScenes;
 
 	//initializes everything in the engine
 	void init();
@@ -230,7 +233,12 @@ public:
 	//run main loop
 	void run();
 	GPUMeshBuffers uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
-
+	AllocatedBuffer create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
+	AllocatedImage create_image(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
+	AllocatedImage create_image(void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
+	void destroy_image(const AllocatedImage& image);
+	void destroy_buffer(const AllocatedBuffer& buffer);
+	void resize_swapchain();
 
 private:
 	void init_vulkan();
@@ -250,14 +258,6 @@ private:
 	void init_imgui();
 
 	void draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView);
-
-
-	AllocatedBuffer create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
-	AllocatedImage create_image(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
-	AllocatedImage create_image(void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
-	void destroy_image(const AllocatedImage& image);
-	void destroy_buffer(const AllocatedBuffer& buffer);
-	void resize_swapchain();
 
 	ComputePipelineObject create_compute_pipeline(const char* name, VkShaderModule shaderModule, ComputePushConstants data);
 };
