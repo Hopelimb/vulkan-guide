@@ -250,7 +250,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine* engine, std::s
 	{
 		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 3 },
 		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 3},
-		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1},
+		{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1},
 	};
 	file.descriptorPool.init(engine->_device, gltf.materials.size(), sizes);
 
@@ -283,6 +283,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine* engine, std::s
 		std::optional<AllocatedImage> img = load_image(engine, gltf, image);
 		if (img.has_value()) {
 			images.push_back(*img);
+			file.images[image.name.c_str()] = *img;
 		}
 		else {
 			images.push_back(engine->_errorCheckerboardImage);
@@ -324,8 +325,12 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine* engine, std::s
 			passType = MaterialPass::Transparent;
 		}
 
-		GLTFMetallic_Roughness::MaterialResources materialResources;
-
+		GLTFMetallic_Roughness::MaterialResources materialResources{
+			.colorImage = engine->_whiteImage,
+			.colorSampler = engine->_defaultSamplerLinear,
+			.metalRoughImage = engine->_whiteImage,
+			.metalRoughSampler = engine->_defaultSamplerLinear,
+		};
 		materialResources.dataBuffer = file.materialDataBuffer.buffer;
 		materialResources.dataBufferOffset = data_index * sizeof(GLTFMetallic_Roughness::MaterialConstants);
 
