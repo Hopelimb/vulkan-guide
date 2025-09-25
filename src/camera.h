@@ -14,6 +14,8 @@ public:
 	glm::mat4 getViewMatrix();
 	glm::mat4 getRotationMatrix();
 
+	bool camera_rotate_mode{ false };
+
 	void processSDLEvent(SDL_Event& e);
 
 	void update();

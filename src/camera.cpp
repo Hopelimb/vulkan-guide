@@ -20,27 +20,6 @@ glm::mat4 Camera::getRotationMatrix()
 
 void Camera::processSDLEvent(SDL_Event& e)
 {
-	switch (e.key.keysym.sym) {
-	case SDLK_w:
-		velocity.z = -1;
-		break;
-	case SDLK_s:
-		velocity.z = 1;
-		break;
-	case SDLK_a:
-		velocity.x = -1;
-		break;
-	case SDLK_d:
-		velocity.x = 1;
-		break;
-	case SDLK_q:
-		velocity.y = -1;
-		break;
-	case SDLK_e:
-		velocity.y = 1;
-		break;
-	}
-
 	switch (e.type)
 	{
 	case SDL_KEYDOWN:
@@ -48,16 +27,29 @@ void Camera::processSDLEvent(SDL_Event& e)
 		if (e.key.keysym.sym == SDLK_s) velocity.z = 1;
 		if (e.key.keysym.sym == SDLK_a) velocity.x = -1;
 		if (e.key.keysym.sym == SDLK_d) velocity.x = 1;
+		if (e.key.keysym.sym == SDLK_q) velocity.y = -1;
+		if (e.key.keysym.sym == SDLK_e) velocity.y = 1;
 		break;
 	case SDL_KEYUP:
 		if (e.key.keysym.sym == SDLK_w) velocity.z = 0;
 		if (e.key.keysym.sym == SDLK_s) velocity.z = 0;
 		if (e.key.keysym.sym == SDLK_a) velocity.x = 0;
 		if (e.key.keysym.sym == SDLK_d) velocity.x = 0;
+		if (e.key.keysym.sym == SDLK_q) velocity.y = 0;
+		if (e.key.keysym.sym == SDLK_e) velocity.y = 0;
 		break;
 	case SDL_MOUSEMOTION:
-		yaw += (float)e.motion.xrel * 0.002f;
-		pitch -= (float)e.motion.yrel * 0.002f;
+		if (camera_rotate_mode)
+		{
+			yaw += (float)e.motion.xrel * 0.002f;
+			pitch -= (float)e.motion.yrel * 0.002f;
+		}
+		break;
+	case SDL_MOUSEBUTTONDOWN:
+		camera_rotate_mode = true;
+		break;
+	case SDL_MOUSEBUTTONUP:
+		camera_rotate_mode = false;
 		break;
 	}
 }
