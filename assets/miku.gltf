@@ -1,0 +1,180 @@
+{
+    "asset": {
+        "version": "2.0",
+        "generator": "Open Asset Import Library (assimp v5.2.cf7d3637)"
+    },
+    "extensionsUsed": [
+        "KHR_materials_volume",
+        "KHR_materials_ior",
+        "FB_ngon_encoding"
+    ],
+    "accessors": [
+        {
+            "bufferView": 0,
+            "byteOffset": 0,
+            "componentType": 5126,
+            "count": 29469,
+            "type": "VEC3",
+            "max": [
+                2.8082308769226076,
+                13.30952262878418,
+                3.0999419689178469
+            ],
+            "min": [
+                -5.183473110198975,
+                -0.012311000376939774,
+                -3.077955961227417
+            ]
+        },
+        {
+            "bufferView": 1,
+            "byteOffset": 0,
+            "componentType": 5126,
+            "count": 29469,
+            "type": "VEC3",
+            "max": [
+                0.999941349029541,
+                1.0,
+                0.9999575614929199
+            ],
+            "min": [
+                -0.999955415725708,
+                -1.0,
+                -0.9999097585678101
+            ]
+        },
+        {
+            "bufferView": 2,
+            "byteOffset": 0,
+            "componentType": 5126,
+            "count": 29469,
+            "type": "VEC2",
+            "max": [
+                0.9975590109825134,
+                0.9990800023078919
+            ],
+            "min": [
+                0.023314999416470529,
+                0.0019530057907104493
+            ]
+        },
+        {
+            "bufferView": 3,
+            "byteOffset": 0,
+            "componentType": 5125,
+            "count": 29469,
+            "type": "SCALAR",
+            "max": [
+                29468
+            ],
+            "min": [
+                0
+            ]
+        }
+    ],
+    "buffers": [
+        {
+            "byteLength": 1060884,
+            "uri": "result.bin"
+        }
+    ],
+    "bufferViews": [
+        {
+            "buffer": 0,
+            "byteOffset": 0,
+            "byteLength": 353628,
+            "target": 34962
+        },
+        {
+            "buffer": 0,
+            "byteOffset": 353628,
+            "byteLength": 353628,
+            "target": 34962
+        },
+        {
+            "buffer": 0,
+            "byteOffset": 707256,
+            "byteLength": 235752,
+            "target": 34962
+        },
+        {
+            "buffer": 0,
+            "byteOffset": 943008,
+            "byteLength": 117876,
+            "target": 34963
+        }
+    ],
+    "materials": [
+        {
+            "name": "DefaultMaterial",
+            "pbrMetallicRoughness": {
+                "baseColorFactor": [
+                    0.6000000238418579,
+                    0.6000000238418579,
+                    0.6000000238418579,
+                    1.0
+                ],
+                "metallicFactor": 0.0
+            },
+            "extensions": {
+                "KHR_materials_ior": {
+                    "ior": 1.0
+                }
+            }
+        },
+        {
+            "name": "ch_tank_12_06.001",
+            "pbrMetallicRoughness": {
+                "baseColorFactor": [
+                    0.6000000238418579,
+                    0.6000000238418579,
+                    0.6000000238418579,
+                    1.0
+                ],
+                "metallicFactor": 0.0
+            },
+            "extensions": {
+                "KHR_materials_ior": {
+                    "ior": 1.0
+                }
+            }
+        }
+    ],
+    "meshes": [
+        {
+            "name": "aa00_battle_83",
+            "primitives": [
+                {
+                    "mode": 4,
+                    "material": 1,
+                    "indices": 3,
+                    "attributes": {
+                        "POSITION": 0,
+                        "NORMAL": 1,
+                        "TEXCOORD_0": 2
+                    }
+                }
+            ]
+        }
+    ],
+    "nodes": [
+        {
+            "name": "Miku.obj",
+            "children": [
+                1
+            ]
+        },
+        {
+            "name": "aa00_battle_83",
+            "mesh": 0
+        }
+    ],
+    "scenes": [
+        {
+            "nodes": [
+                0
+            ]
+        }
+    ],
+    "scene": 0
+}

@@ -109,6 +109,15 @@ struct GLTFMetallic_Roughness {
 	MaterialInstance write_material(VkDevice device, MaterialPass pass, const MaterialResources& resources, DescriptorAllocatorGrowable& descriptorAllocator);
 };
 
+struct EngineStats {
+
+	float frametime;
+	int triangle_count;
+	int drawcall_count;
+	float scene_update_time;
+	float mesh_draw_time;
+};
+
 struct MeshNode : public Node {
 
 	std::shared_ptr<MeshAsset> mesh;
@@ -212,6 +221,8 @@ public:
 	Camera mainCamera;
 
 	std::unordered_map<std::string, std::shared_ptr<LoadedGLTF>> loadedScenes;
+
+	EngineStats stats;
 
 	//initializes everything in the engine
 	void init();

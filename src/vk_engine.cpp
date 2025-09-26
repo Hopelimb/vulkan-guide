@@ -195,6 +195,17 @@ void VulkanEngine::update_imgui()
         ImGui::End();
     }
 
+	if (ImGui::Begin("Stats")) {
+		ImGui::Text("Frame: %d", _frameNumber);
+		ImGui::Text("Drawcalls: %d", stats.drawcall_count);
+		ImGui::Text("Triangles: %d", stats.triangle_count);
+		ImGui::Text("frame time: %.2f ms", stats.frametime * 1000.0f);
+        // print the sceme update time
+		ImGui::Text("scene update time: %.2f ms", stats.scene_update_time * 1000.0f);
+        		ImGui::Text("FPS: %.2f", 1.0f / ImGui::GetIO().DeltaTime);
+		ImGui::End();
+	}
+
     ImGui::ShowDemoWindow();
     ImGui::Render();
 }
@@ -249,6 +260,10 @@ void VulkanEngine::compute_background(VkCommandBuffer cmdBuffer)
 
 void VulkanEngine::draw_geometry(VkCommandBuffer cmdBuffer)
 {
+	stats.drawcall_count = 0;
+	stats.triangle_count = 0;
+	auto start = std::chrono::high_resolution_clock::now();
+
     VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(
         _drawImage.imageView,
         nullptr, // no clear value, we already cleared it in the background
@@ -314,6 +329,9 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmdBuffer)
             VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &push_constants);
 
         vkCmdDrawIndexed(cmdBuffer, draw.indexCount, 1, draw.firstIndex, 0, 0);
+
+		stats.drawcall_count++;
+		stats.triangle_count += draw.indexCount / 3;
         };
 
     for (const RenderObject& r : mainDrawContext.OpaqueSurfaces) {
@@ -323,10 +341,16 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmdBuffer)
         drawLamda(r);
     }
     vkCmdEndRendering(cmdBuffer);
+
+	auto end = std::chrono::high_resolution_clock::now();
+	auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+	stats.mesh_draw_time = elapsed.count() / 1000.0f;
 }
 
 void VulkanEngine::update_scene()
 {
+	auto start = std::chrono::high_resolution_clock::now();
+
     mainDrawContext.OpaqueSurfaces.clear();
     mainDrawContext.TransparentSurfaces.clear();
     loadedScenes["structure"]->Draw(glm::mat4{ 1.f }, mainDrawContext);
@@ -354,8 +378,12 @@ void VulkanEngine::update_scene()
     sceneData.viewporj = sceneData.proj * sceneData.view;
 
     sceneData.ambientColor = glm::vec4(0.1f);
-    sceneData.sunlightColor = glm::vec4(0.1f);
+    sceneData.sunlightColor = glm::vec4(0.5f);
     sceneData.sunlightDirection = glm::vec4(0, 1, 0.5f, 1);
+
+	auto end = std::chrono::high_resolution_clock::now();
+	auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+	stats.scene_update_time = elapsed.count() / 1000.0f;
 }
 
 void VulkanEngine::run()
@@ -365,6 +393,8 @@ void VulkanEngine::run()
 
     // main loop
     while (!bQuit) {
+        auto startTime = std::chrono::system_clock::now();
+
         // Handle events on queue
         while (SDL_PollEvent(&e) != 0) {
             // close the window when user alt-f4s or clicks the X button
@@ -396,6 +426,10 @@ void VulkanEngine::run()
         }
 
         draw();
+
+		auto endTime = std::chrono::system_clock::now();
+		auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
+		stats.frametime = elapsed.count() / 1000.0f;
     }
 }
 
