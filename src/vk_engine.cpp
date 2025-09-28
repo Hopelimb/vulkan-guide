@@ -196,25 +196,25 @@ void VulkanEngine::update_imgui()
     }
 
 
-	// calculate average stats from stats_queue
-	if (ImGui::Begin("Latest Stats")) {
-		ImGui::Text("Frame: %d", _frameNumber);
-		ImGui::Text("Drawcalls: %d", stats_latest.drawcall_count);
-		ImGui::Text("Triangles: %d", stats_latest.triangle_count);
-		ImGui::Text("frame time: %.2f ms", stats_latest.GetCurrentFrameTime());
+    // calculate average stats from stats_queue
+    if (ImGui::Begin("Latest Stats")) {
+        ImGui::Text("Frame: %d", _frameNumber);
+        ImGui::Text("Drawcalls: %d", stats.drawcall_count);
+        ImGui::Text("Triangles: %d", stats.triangle_count);
+        ImGui::Text("frame time: %.2f ms", stats.GetCurrentFrameTime());
         // print the sceme update time
-		ImGui::Text("scene update time: %.2f ms", stats_latest.GetCurrentSceneUpdateTime());
-        		ImGui::Text("FPS: %.2f", 1.0f / ImGui::GetIO().DeltaTime);
-		ImGui::Text("mesh draw time: %.2f ms", stats_latest.GetCurrentMeshDrawTime());
-		ImGui::End();
-	}
+        ImGui::Text("scene update time: %.2f ms", stats.GetCurrentSceneUpdateTime());
+        ImGui::Text("FPS: %.2f", 1.0f / ImGui::GetIO().DeltaTime);
+        ImGui::Text("mesh draw time: %.2f ms", stats.GetCurrentMeshDrawTime());
+        ImGui::End();
+    }
 
     if (ImGui::Begin("Average Stats")) {
-        ImGui::Text("frame time: %.2f ms", stats_latest.GetAverageFrameTime());
+        ImGui::Text("frame time: %.2f ms", stats.GetAverageFrameTime());
         // print the sceme update time
-        ImGui::Text("scene update time: %.2f ms", stats_latest.GetAverageSceneUpdateTime());
+        ImGui::Text("scene update time: %.2f ms", stats.GetAverageSceneUpdateTime());
         ImGui::Text("FPS: %.2f", 1.0f / ImGui::GetIO().DeltaTime);
-        ImGui::Text("mesh draw time: %.2f ms", stats_latest.GetAverageMeshDrawTime());
+        ImGui::Text("mesh draw time: %.2f ms", stats.GetAverageMeshDrawTime());
         ImGui::End();
     }
 
@@ -260,20 +260,40 @@ void VulkanEngine::draw_recordRenderCmds(VkCommandBuffer cmdBuffer, uint32_t swa
 
 void VulkanEngine::compute_background(VkCommandBuffer cmdBuffer)
 {
-	ComputePipelineObject& currentEffect = backgroundPipelines[currentBachgroundEffect];
+    ComputePipelineObject& currentEffect = backgroundPipelines[currentBachgroundEffect];
 
     vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, currentEffect.pipeline);
     vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, currentEffect.pipelineLayout, 0, 1,
         &currentEffect.descriptorSet, 0, nullptr
     );
-	vkCmdPushConstants(cmdBuffer, currentEffect.pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputePushConstants), &currentEffect.data);
+    vkCmdPushConstants(cmdBuffer, currentEffect.pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputePushConstants), &currentEffect.data);
     vkCmdDispatch(cmdBuffer, std::ceil(_drawExtent.width / 16.0), std::ceil(_drawExtent.width / 16.0), 1);
 }
 
 void VulkanEngine::draw_geometry(VkCommandBuffer cmdBuffer)
 {
-    stats_latest.drawcall_count = 0;
-    stats_latest.triangle_count = 0;
+    std::vector<uint32_t> opaque_draw_indices;
+    opaque_draw_indices.reserve(mainDrawContext.OpaqueSurfaces.size());
+
+    for (uint32_t i = 0; i < mainDrawContext.OpaqueSurfaces.size(); i++) {
+        opaque_draw_indices.push_back(i);
+    }
+
+    // sort the opaque surfacrs by material and mesh
+    std::sort(opaque_draw_indices.begin(), opaque_draw_indices.end(), [&](const auto& iA, const auto& iB){
+        const RenderObject& A = mainDrawContext.OpaqueSurfaces[iA];
+        const RenderObject& B = mainDrawContext.OpaqueSurfaces[iB];
+
+        if (A.material == B.material) {
+            return A.indexBuffer < B.indexBuffer;
+        }
+        else {
+            return A.material < B.material;
+        }
+    });
+
+    stats.drawcall_count = 0;
+    stats.triangle_count = 0;
 	auto start = std::chrono::high_resolution_clock::now();
 
     VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(
@@ -358,13 +378,14 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmdBuffer)
 
         vkCmdDrawIndexed(cmdBuffer, renderObject.indexCount, 1, renderObject.firstIndex, 0, 0);
 
-        stats_latest.drawcall_count++;
-        stats_latest.triangle_count += renderObject.indexCount / 3;
+        stats.drawcall_count++;
+        stats.triangle_count += renderObject.indexCount / 3;
         };
 
-    for (const RenderObject& r : mainDrawContext.OpaqueSurfaces) {
-        drawLamda(r);
+    for (const uint32_t& index : opaque_draw_indices) {
+        drawLamda(mainDrawContext.OpaqueSurfaces[index]);
     }
+
     for (const RenderObject& r : mainDrawContext.TransparentSurfaces) {
         drawLamda(r);
     }
@@ -372,7 +393,7 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmdBuffer)
 
 	auto end = std::chrono::high_resolution_clock::now();
 	auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-    stats_latest.add_mesh_draw_time(elapsed.count() / 1000.0f);
+    stats.add_mesh_draw_time(elapsed.count() / 1000.0f);
 }
 
 void VulkanEngine::update_scene()
@@ -411,7 +432,7 @@ void VulkanEngine::update_scene()
 
 	auto end = std::chrono::high_resolution_clock::now();
 	auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-	stats_latest.add_scene_update_time(elapsed.count() / 1000.0f);
+	stats.add_scene_update_time(elapsed.count() / 1000.0f);
 }
 
 void VulkanEngine::run()
@@ -458,8 +479,8 @@ void VulkanEngine::run()
 		auto endTime = std::chrono::system_clock::now();
 		auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
 
-        stats_latest.add_frame_time(elapsed.count() / 1000.0f);
-        stats_latest.update_current_frame();
+        stats.add_frame_time(elapsed.count() / 1000.0f);
+        stats.update_current_frame();
     }
 }
 

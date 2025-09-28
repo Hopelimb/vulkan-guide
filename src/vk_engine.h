@@ -312,7 +312,7 @@ public:
 
 	std::unordered_map<std::string, std::shared_ptr<LoadedGLTF>> loadedScenes;
 
-	EngineStats stats_latest;
+	EngineStats stats;
 
 	//initializes everything in the engine
 	void init();
