@@ -40,7 +40,7 @@ struct FrameData {
 struct GPUSceneData {
 	glm::mat4 view;
 	glm::mat4 proj;
-	glm::mat4 viewporj;
+	glm::mat4 viewproj;
 	glm::vec4 ambientColor;
 	glm::vec4 sunlightDirection;
 	glm::vec4 sunlightColor;
@@ -222,7 +222,7 @@ struct RenderObject {
 	VkBuffer indexBuffer{ VK_NULL_HANDLE };
 
 	MaterialInstance* material{ nullptr };
-
+	Bounds bounds;
 	glm::mat4 transform;
 	VkDeviceAddress vertexBufferAddress{ 0 };
 };

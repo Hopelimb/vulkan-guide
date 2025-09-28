@@ -33,6 +33,53 @@ const char* PATH_MESH_MONKEY = "../../assets/basicmesh.glb";
 const char* PATH_MESH_STRUCTURE = "../../assets/structure.glb";
 
 VulkanEngine& VulkanEngine::Get() { return *loadedEngine; }
+
+bool is_visible(const RenderObject& obj, const glm::mat4& viewproj)
+{
+    std::array<glm::vec3, 8> corners{
+        glm::vec3 {1, 1, 1},
+        glm::vec3 {1, 1, -1},
+        glm::vec3 {1, -1, 1},
+        glm::vec3 {1, -1, -1},
+        glm::vec3 {-1, 1, 1},
+        glm::vec3 {-1, 1, -1},
+        glm::vec3 {-1, -1, 1},
+        glm::vec3 {-1, -1, -1},
+    };
+
+    glm::mat4 matrix = viewproj * obj.transform;
+
+    glm::vec3 min = { 1.5, 1.5, 1.5 };
+    glm::vec3 max = { -1.5, -1.5, -1.5 };
+
+    for (int c = 0; c < 8; c++)
+    {
+        glm::vec4 v = matrix * glm::vec4(obj.bounds.origin + (corners[c] * obj.bounds.extents), 1.f);
+
+        v.x = v.x / v.w;
+        v.y = v.y / v.w;
+        v.z = v.z / v.w;
+
+        min = glm::min(min, glm::vec3{ v });
+		max = glm::max(max, glm::vec3{ v });
+    }
+
+    if (min.z > 1.f ||
+        max.z < 0.f ||
+        min.x > 1.f ||
+        max.x < -1.f ||
+        min.y > 1.f ||
+        max.y < -1.f)
+    {
+		return false;
+    } 
+    else {
+
+        return true;
+    }
+}
+
+
 void VulkanEngine::init()
 {
     // only one engine initialization is allowed with the application.
@@ -276,7 +323,10 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmdBuffer)
     opaque_draw_indices.reserve(mainDrawContext.OpaqueSurfaces.size());
 
     for (uint32_t i = 0; i < mainDrawContext.OpaqueSurfaces.size(); i++) {
-        opaque_draw_indices.push_back(i);
+        if (is_visible(mainDrawContext.OpaqueSurfaces[i], sceneData.viewproj))
+        {
+            opaque_draw_indices.push_back(i);
+        }
     }
 
     // sort the opaque surfacrs by material and mesh
@@ -424,7 +474,7 @@ void VulkanEngine::update_scene()
 
     sceneData.view = viewMatrix;
     sceneData.proj = projection;
-    sceneData.viewporj = sceneData.proj * sceneData.view;
+    sceneData.viewproj = sceneData.proj * sceneData.view;
 
     sceneData.ambientColor = glm::vec4(0.1f);
     sceneData.sunlightColor = glm::vec4(0.5f);
@@ -1337,11 +1387,16 @@ void MeshNode::Draw(const glm::mat4& topMatrix, DrawContext& ctx)
 		def.firstIndex = s.startIndex;
         def.indexBuffer = mesh->meshBuffers.indexBuffer.buffer;
         def.material = &s.material->data;
-
+        def.bounds = s.bounds;
         def.transform = nodeMatrix;
         def.vertexBufferAddress = mesh->meshBuffers.vertexBufferAddress;
 
-        ctx.OpaqueSurfaces.push_back(def);
+        if (s.material->data.passType == MaterialPass::Transparent) {
+            ctx.TransparentSurfaces.push_back(def);
+        }
+        else {
+            ctx.OpaqueSurfaces.push_back(def);
+        }
     }
 
     Node::Draw(topMatrix, ctx);
