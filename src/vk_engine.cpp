@@ -195,16 +195,28 @@ void VulkanEngine::update_imgui()
         ImGui::End();
     }
 
-	if (ImGui::Begin("Stats")) {
+
+	// calculate average stats from stats_queue
+	if (ImGui::Begin("Latest Stats")) {
 		ImGui::Text("Frame: %d", _frameNumber);
-		ImGui::Text("Drawcalls: %d", stats.drawcall_count);
-		ImGui::Text("Triangles: %d", stats.triangle_count);
-		ImGui::Text("frame time: %.2f ms", stats.frametime * 1000.0f);
+		ImGui::Text("Drawcalls: %d", stats_latest.drawcall_count);
+		ImGui::Text("Triangles: %d", stats_latest.triangle_count);
+		ImGui::Text("frame time: %.2f ms", stats_latest.GetCurrentFrameTime());
         // print the sceme update time
-		ImGui::Text("scene update time: %.2f ms", stats.scene_update_time * 1000.0f);
+		ImGui::Text("scene update time: %.2f ms", stats_latest.GetCurrentSceneUpdateTime());
         		ImGui::Text("FPS: %.2f", 1.0f / ImGui::GetIO().DeltaTime);
+		ImGui::Text("mesh draw time: %.2f ms", stats_latest.GetCurrentMeshDrawTime());
 		ImGui::End();
 	}
+
+    if (ImGui::Begin("Average Stats")) {
+        ImGui::Text("frame time: %.2f ms", stats_latest.GetAverageFrameTime());
+        // print the sceme update time
+        ImGui::Text("scene update time: %.2f ms", stats_latest.GetAverageSceneUpdateTime());
+        ImGui::Text("FPS: %.2f", 1.0f / ImGui::GetIO().DeltaTime);
+        ImGui::Text("mesh draw time: %.2f ms", stats_latest.GetAverageMeshDrawTime());
+        ImGui::End();
+    }
 
     ImGui::ShowDemoWindow();
     ImGui::Render();
@@ -260,8 +272,8 @@ void VulkanEngine::compute_background(VkCommandBuffer cmdBuffer)
 
 void VulkanEngine::draw_geometry(VkCommandBuffer cmdBuffer)
 {
-	stats.drawcall_count = 0;
-	stats.triangle_count = 0;
+    stats_latest.drawcall_count = 0;
+    stats_latest.triangle_count = 0;
 	auto start = std::chrono::high_resolution_clock::now();
 
     VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(
@@ -272,27 +284,6 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmdBuffer)
 
     VkRenderingInfo renderInfo = vkinit::rendering_info(_drawExtent, &colorAttachment, &depthAttachment);
     vkCmdBeginRendering(cmdBuffer, &renderInfo);
-
-#pragma region setup viewport and scissor
-    //vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _trianglePipeline);
-    VkViewport viewport{
-        .x = 0.0f,
-        .y = 0.0f,
-        .width = (float)_drawExtent.width,
-        .height = (float)_drawExtent.height,
-        .minDepth = 0.0f,
-        .maxDepth = 1.0f
-    };
-
-    vkCmdSetViewport(cmdBuffer, 0, 1, &viewport);
-
-    VkRect2D scissor{
-        .offset = { 0, 0 },
-        .extent = _drawExtent
-    };
-
-    vkCmdSetScissor(cmdBuffer, 0, 1, &scissor);
-#pragma endregion
 
 #pragma region Scene Data Upload
     //allocate a new uniform buffer for the scene data
@@ -316,22 +307,59 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmdBuffer)
     }
 #pragma endregion
 
-    auto drawLamda = [&](const RenderObject& draw) {
-        vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, draw.material->pipeline->pipeline);
-        vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, draw.material->pipeline->layout, 0, 1, &globalDescriptor, 0, nullptr);
-        vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, draw.material->pipeline->layout, 1, 1, &draw.material->materialSet, 0, nullptr);
 
-        vkCmdBindIndexBuffer(cmdBuffer, draw.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+    MaterialPipeline* lastPipeline = nullptr;
+    MaterialInstance* lastMaterial = nullptr;
+    VkBuffer lastIndexBuffer = VK_NULL_HANDLE;
+
+    auto drawLamda = [&](const RenderObject& renderObject) {
+
+        if (renderObject.material != lastMaterial) 
+        {
+            lastMaterial = renderObject.material;
+            // rebind pipeline and descriptor sets only if the material changed
+            if (renderObject.material->pipeline != lastPipeline) 
+            {
+                lastPipeline = renderObject.material->pipeline;
+                vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, renderObject.material->pipeline->pipeline);
+                vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, renderObject.material->pipeline->layout, 0, 1, &globalDescriptor, 0, nullptr);
+#pragma region setup viewport and scissor
+                VkViewport viewport{
+                    .x = 0.0f,
+                    .y = 0.0f,
+                    .width = (float)_drawExtent.width,
+                    .height = (float)_drawExtent.height,
+                    .minDepth = 0.0f,
+                    .maxDepth = 1.0f
+                };
+
+                vkCmdSetViewport(cmdBuffer, 0, 1, &viewport);
+
+                VkRect2D scissor{
+                    .offset = { 0, 0 },
+                    .extent = _drawExtent
+                };
+
+                vkCmdSetScissor(cmdBuffer, 0, 1, &scissor);
+#pragma endregion
+            }
+            vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, renderObject.material->pipeline->layout, 1, 1, &renderObject.material->materialSet, 0, nullptr);
+        }
+        if (renderObject.indexBuffer != lastIndexBuffer) {
+            lastIndexBuffer = renderObject.indexBuffer;
+            vkCmdBindIndexBuffer(cmdBuffer, renderObject.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+        }
+
         GPUDrawPushConstants push_constants{};
-        push_constants.worldMatrix = draw.transform;
-        push_constants.vertexBuffer = draw.vertexBufferAddress;
-        vkCmdPushConstants(cmdBuffer, draw.material->pipeline->layout,
+        push_constants.worldMatrix = renderObject.transform;
+        push_constants.vertexBuffer = renderObject.vertexBufferAddress;
+        vkCmdPushConstants(cmdBuffer, renderObject.material->pipeline->layout,
             VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &push_constants);
 
-        vkCmdDrawIndexed(cmdBuffer, draw.indexCount, 1, draw.firstIndex, 0, 0);
+        vkCmdDrawIndexed(cmdBuffer, renderObject.indexCount, 1, renderObject.firstIndex, 0, 0);
 
-		stats.drawcall_count++;
-		stats.triangle_count += draw.indexCount / 3;
+        stats_latest.drawcall_count++;
+        stats_latest.triangle_count += renderObject.indexCount / 3;
         };
 
     for (const RenderObject& r : mainDrawContext.OpaqueSurfaces) {
@@ -344,12 +372,12 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmdBuffer)
 
 	auto end = std::chrono::high_resolution_clock::now();
 	auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-	stats.mesh_draw_time = elapsed.count() / 1000.0f;
+    stats_latest.add_mesh_draw_time(elapsed.count() / 1000.0f);
 }
 
 void VulkanEngine::update_scene()
 {
-	auto start = std::chrono::high_resolution_clock::now();
+    auto start = std::chrono::high_resolution_clock::now();
 
     mainDrawContext.OpaqueSurfaces.clear();
     mainDrawContext.TransparentSurfaces.clear();
@@ -383,7 +411,7 @@ void VulkanEngine::update_scene()
 
 	auto end = std::chrono::high_resolution_clock::now();
 	auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-	stats.scene_update_time = elapsed.count() / 1000.0f;
+	stats_latest.add_scene_update_time(elapsed.count() / 1000.0f);
 }
 
 void VulkanEngine::run()
@@ -429,7 +457,9 @@ void VulkanEngine::run()
 
 		auto endTime = std::chrono::system_clock::now();
 		auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
-		stats.frametime = elapsed.count() / 1000.0f;
+
+        stats_latest.add_frame_time(elapsed.count() / 1000.0f);
+        stats_latest.update_current_frame();
     }
 }
 

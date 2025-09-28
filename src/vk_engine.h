@@ -110,12 +110,102 @@ struct GLTFMetallic_Roughness {
 };
 
 struct EngineStats {
-
-	float frametime;
 	int triangle_count;
 	int drawcall_count;
-	float scene_update_time;
-	float mesh_draw_time;
+	
+	std::vector<float> frame_times;
+	std::vector<float> scene_update_times;
+	std::vector<float> mesh_draw_times;
+
+private:
+	int cache_size{ 100 };
+	int current_index{ 0 };
+public:
+
+	EngineStats(int cachesize = 100) : cache_size{ cachesize } {
+		triangle_count = 0;
+		drawcall_count = 0;
+
+		frame_times.resize(cache_size);
+		scene_update_times.resize(cache_size);
+		mesh_draw_times.resize(cache_size);
+
+		for (int i = 0; i < cache_size; i++) {
+			// initialize with -1
+			frame_times[i] = -1.f;
+			scene_update_times[i] = -1.f;
+			mesh_draw_times[i] = -1.f;
+		}
+	}
+
+	void update_current_frame() {
+		current_index = (current_index + 1) % cache_size;
+	}
+
+	void add_frame_time(float time) {
+		assert(current_index < frame_times.size());
+		frame_times[current_index] = time;
+	}
+	void add_scene_update_time(float time) {
+		assert(current_index < scene_update_times.size());
+		scene_update_times[current_index] = time;
+	}
+	void add_mesh_draw_time(float time) {
+		assert(current_index < mesh_draw_times.size());
+		mesh_draw_times[current_index] = time;
+	}
+
+	// get the lastet frame time
+	float GetCurrentFrameTime() const {
+		assert(current_index < frame_times.size());
+		return frame_times[current_index];
+	}
+	
+	float GetCurrentSceneUpdateTime() const {
+		assert(current_index < scene_update_times.size());
+		return scene_update_times[current_index];
+	}
+
+	float GetCurrentMeshDrawTime() const {
+		assert(current_index < mesh_draw_times.size());
+		return mesh_draw_times[current_index];
+	}
+
+	float GetAverageFrameTime() const {
+		float total = 0.f;
+		int count = 0;
+		for (float t : frame_times) {
+			if (t >= 0.f) {
+				total += t;
+				count++;
+			}
+		}
+		return count > 0 ? total / count : 0.f;
+	}
+
+	float GetAverageSceneUpdateTime() const {
+		float total = 0.f;
+		int count = 0;
+		for (float t : scene_update_times) {
+			if (t >= 0.f) {
+				total += t;
+				count++;
+			}
+		}
+		return count > 0 ? total / count : 0.f;
+	}
+
+	float GetAverageMeshDrawTime() const {
+		float total = 0.f;
+		int count = 0;
+		for (float t : mesh_draw_times) {
+			if (t >= 0.f) {
+				total += t;
+				count++;
+			}
+		}
+		return count > 0 ? total / count : 0.f;
+	}
 };
 
 struct MeshNode : public Node {
@@ -222,7 +312,7 @@ public:
 
 	std::unordered_map<std::string, std::shared_ptr<LoadedGLTF>> loadedScenes;
 
-	EngineStats stats;
+	EngineStats stats_latest;
 
 	//initializes everything in the engine
 	void init();
