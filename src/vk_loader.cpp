@@ -193,7 +193,7 @@ void create_image_from_data(unsigned char* data, int width, int height, Allocate
 			.depth = static_cast<uint32_t>(1),
 		};
 
-		newImage = engine->create_image(data, imagesize, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT, false);
+		newImage = engine->create_image(data, imagesize, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT, true);
 		stbi_image_free(data);
 	}
 }
