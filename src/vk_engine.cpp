@@ -30,7 +30,7 @@ const char* PATH_SHADER_FRAG_MESH = "../../shaders/mesh.frag.spv";
 const char* PATH_SHADER_VERT_MESH = "../../shaders/mesh.vert.spv";
 
 const char* PATH_MESH_MONKEY = "../../assets/basicmesh.glb";
-const char* PATH_MESH_STRUCTURE = "../../assets/structure.glb";
+const char* PATH_MESH_STRUCTURE = "../../assets/MikuSP.glb";
 
 VulkanEngine& VulkanEngine::Get() { return *loadedEngine; }
 
@@ -342,13 +342,38 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmdBuffer)
         }
     });
 
+    //std::vector<uint32_t> transparent_draw_indices;
+    //transparent_draw_indices.reserve(mainDrawContext.TransparentSurfaces.size());
+
+    //for (uint32_t i = 0; i < mainDrawContext.TransparentSurfaces.size(); i++) {
+    //    if (is_visible(mainDrawContext.TransparentSurfaces[i], sceneData.viewproj))
+    //    {
+    //        transparent_draw_indices.push_back(i);
+    //    }
+    //}
+
+    //// sort the opaque surfacrs by material and mesh
+    //std::sort(transparent_draw_indices.begin(), transparent_draw_indices.end(), [&](const auto& iA, const auto& iB) {
+    //    const RenderObject& A = mainDrawContext.TransparentSurfaces[iA];
+    //    const RenderObject& B = mainDrawContext.TransparentSurfaces[iB];
+
+    //    if (A.material == B.material) {
+    //        return A.indexBuffer >= B.indexBuffer;
+    //    }
+    //    else {
+    //        return A.material >= B.material;
+    //    }
+    //    });
+
     stats.drawcall_count = 0;
     stats.triangle_count = 0;
 	auto start = std::chrono::high_resolution_clock::now();
 
+	VkClearValue clearColor = { {0.0f, 0.0f, 0.0f, 1.0f} };
     VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(
         _drawImage.imageView,
-        nullptr, // no clear value, we already cleared it in the background
+        nullptr,
+        //&clearColor, // no clear value, we already cleared it in the background
         VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     VkRenderingAttachmentInfo depthAttachment = vkinit::depth_attachment_info(_depthImage.imageView, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
@@ -435,8 +460,10 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmdBuffer)
     for (const uint32_t& index : opaque_draw_indices) {
         drawLamda(mainDrawContext.OpaqueSurfaces[index]);
     }
-
-    for (const RenderObject& r : mainDrawContext.TransparentSurfaces) {
+    //for (const uint32_t& index : transparent_draw_indices) {
+    //    drawLamda(mainDrawContext.TransparentSurfaces[index]);
+    //}
+    for (const RenderObject r : mainDrawContext.TransparentSurfaces) {
         drawLamda(r);
     }
     vkCmdEndRendering(cmdBuffer);
@@ -452,15 +479,17 @@ void VulkanEngine::update_scene()
 
     mainDrawContext.OpaqueSurfaces.clear();
     mainDrawContext.TransparentSurfaces.clear();
-    loadedScenes["structure"]->Draw(glm::mat4{ 1.f }, mainDrawContext);
-    loadedNodes["Suzanne"]->Draw(glm::mat4{1.f}, mainDrawContext);
-    for (int x = -3; x < 3; x++) {
+    glm::mat4 scale = glm::scale(glm::vec3{ 5 });
+    glm::mat4 translation = glm::translate(glm::vec3{ 0, -0.8, -0.5 });
+    loadedScenes["structure"]->Draw(scale * translation, mainDrawContext);
+    //loadedNodes["Suzanne"]->Draw(glm::mat4{1.f}, mainDrawContext);
+    //for (int x = -3; x < 3; x++) {
 
-        glm::mat4 scale = glm::scale(glm::vec3{ 0.2 });
-        glm::mat4 translation = glm::translate(glm::vec3{ x, 1, 0 });
+    //    glm::mat4 scale = glm::scale(glm::vec3{ 0.2 });
+    //    glm::mat4 translation = glm::translate(glm::vec3{ x, 1, 0 });
 
-        loadedNodes["Cube"]->Draw(translation * scale, mainDrawContext);
-    }
+    //    loadedNodes["Cube"]->Draw(translation * scale, mainDrawContext);
+    //}
 
 	// update camera matrices
     mainCamera.update();
@@ -476,9 +505,9 @@ void VulkanEngine::update_scene()
     sceneData.proj = projection;
     sceneData.viewproj = sceneData.proj * sceneData.view;
 
-    sceneData.ambientColor = glm::vec4(0.1f);
-    sceneData.sunlightColor = glm::vec4(0.5f);
-    sceneData.sunlightDirection = glm::vec4(0, 1, 0.5f, 1);
+    sceneData.ambientColor = glm::vec4(0.39f);
+    sceneData.sunlightColor = glm::vec4(0.1);
+    sceneData.sunlightDirection = glm::vec4(0, 0, 0.5f, 0);
 
 	auto end = std::chrono::high_resolution_clock::now();
 	auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
@@ -816,10 +845,10 @@ void VulkanEngine::init_create_resources() {
     materialResources.dataBuffer = materialDataBuffer.buffer;
     materialResources.dataBufferOffset = 0;
 
-    defaultMaterial = metalRoughMaterial.write_material(
-        _device, MaterialPass::MainColor, materialResources,
-        _globalDescriptorAllocator
-    );
+    //defaultMaterial = metalRoughMaterial.write_material(
+    //    _device, MaterialPass::MainColor, materialResources,
+    //    _globalDescriptorAllocator
+    //);
 
     for (auto& m : testMeshes) {
         std::shared_ptr<MeshNode> newNode = std::make_shared<MeshNode>();
@@ -830,7 +859,7 @@ void VulkanEngine::init_create_resources() {
 
         for (auto& s : newNode->mesh->surfaces) {
             s.material = std::make_shared<GLTFMaterial>();
-            s.material->data = defaultMaterial;
+            //s.material->data = defaultMaterial;
         }
 
         loadedNodes[m->name] = std::move(newNode);
@@ -1325,10 +1354,12 @@ void GLTFMetallic_Roughness::build_pipelines(VulkanEngine* engine)
     pipelineBuilder.set_depth_format(engine->_depthImage.imageFormat);
 
     pipelineBuilder._pipelineLayout = newlayout;
+    
     opaquePipeline.pipeline = pipelineBuilder.build_pipeline(engine->_device);
 
-
-    pipelineBuilder.enable_blending_additive();
+    pipelineBuilder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+    pipelineBuilder.enable_blending_alpha();
+    //pipelineBuilder.enable_blending_additive();
     pipelineBuilder.enable_depthtest(false, VK_COMPARE_OP_GREATER_OR_EQUAL);
     transparentPipeline.pipeline = pipelineBuilder.build_pipeline(engine->_device);
 
@@ -1379,6 +1410,31 @@ MaterialInstance GLTFMetallic_Roughness::write_material(VkDevice device, Materia
         VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
     );
 	writer.update_set(device, matData.materialSet);
+    return matData;
+}
+
+MaterialInstance GLTFMetallic_Roughness::write_material2(VkDevice device, MaterialPass pass, int binding, const MaterialResources& resources, DescriptorAllocatorGrowable& descriptorAllocator)
+{
+    MaterialInstance matData;
+    matData.passType = pass;
+    if (pass == MaterialPass::Transparent)
+    {
+        matData.pipeline = &transparentPipeline;
+    }
+    else {
+        matData.pipeline = &opaquePipeline;
+    }
+    DescriptorLayoutBuilder layoutbuilder;
+    layoutbuilder.add_binding(binding, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+
+    auto layout = layoutbuilder.build(device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+    matData.materialSet = descriptorAllocator.allocate(device, layout);
+
+    writer.write_Image(
+        binding, resources.colorImage.imageView,
+        resources.colorSampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+    );
     return matData;
 }
 

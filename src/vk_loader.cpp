@@ -150,7 +150,7 @@ std::optional<AllocatedImage> load_image(VulkanEngine* engine, fastgltf::Asset& 
 				assert(filePath.uri.isLocalPath());
 
 				const std::string path(filePath.uri.path().begin(), filePath.uri.path().end());
-				unsigned char* data = stbi_load(path.c_str(), &width, &height, &nrChannels, 4);
+				unsigned char* data = stbi_load(("G://Projects//NativeProjects//vulkan-guide//vulkan-guide//assets//" + path).c_str(), &width, &height, &nrChannels, 4);
 				create_image_from_data(data, width, height, newImage, engine);
 			},
 			[&](fastgltf::sources::Vector& vector) {
@@ -342,8 +342,8 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine* engine, std::s
 			materialResources.colorImage = images[imageIndex];
 			materialResources.colorSampler = file.samplers[samplerIndex];
 		}
-
 		newMat->data = engine->metalRoughMaterial.write_material(engine->_device, passType, materialResources, file.descriptorPool);
+		//newMat->data = engine->metalRoughMaterial.write_material2(engine->_device, passType, data_index, materialResources, file.descriptorPool);
 		data_index++;
 	}
 
@@ -404,8 +404,8 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine* engine, std::s
 #pragma region load UVs info
 			auto uvAttribute = p.findAttribute("TEXCOORD_0");
 			if (uvAttribute != p.attributes.end()) {
-				fastgltf::iterateAccessorWithIndex<glm::vec4>(gltf, gltf.accessors[(*uvAttribute).second],
-					[&](glm::vec4 uv, size_t index) {
+				fastgltf::iterateAccessorWithIndex<glm::vec2>(gltf, gltf.accessors[(*uvAttribute).second],
+					[&](glm::vec2 uv, size_t index) {
 						vertices[initial_vtx + index].uv_x = uv.x;
 						vertices[initial_vtx + index].uv_y = uv.y;
 					}

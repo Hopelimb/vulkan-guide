@@ -107,6 +107,7 @@ struct GLTFMetallic_Roughness {
 	void clear_resources(VkDevice device);
 
 	MaterialInstance write_material(VkDevice device, MaterialPass pass, const MaterialResources& resources, DescriptorAllocatorGrowable& descriptorAllocator);
+	MaterialInstance write_material2(VkDevice device, MaterialPass pass, int binding, const MaterialResources& resources, DescriptorAllocatorGrowable& descriptorAllocator);
 };
 
 struct EngineStats {
@@ -236,7 +237,7 @@ struct DrawContext {
 
 class VulkanEngine {
 public:
-	const uint64_t TIMEOUT = 1000000000; // 1 second in nanoseconds
+	const uint64_t TIMEOUT = 2000000000; // 2 second in nanoseconds
 
 	bool bUseValidationLayers{ true };
 	bool _isInitialized{ false };
@@ -302,7 +303,7 @@ public:
 
 	VkDescriptorSetLayout _singleImageDescriptorlayout;
 
-	MaterialInstance defaultMaterial;
+	//MaterialInstance defaultMaterial;
 	GLTFMetallic_Roughness metalRoughMaterial;
 
 	DrawContext mainDrawContext;
