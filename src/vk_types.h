@@ -58,11 +58,14 @@ struct GPUMeshBuffers {
     AllocatedBuffer indexBuffer;
     AllocatedBuffer vertexBuffer;
     VkDeviceAddress vertexBufferAddress;
+    AllocatedBuffer jointMatrixBuffer;
+    VkDeviceAddress jointMatrixBufferAddress;
 };
 
 struct GPUDrawPushConstants {
     glm::mat4 worldMatrix;
     VkDeviceAddress vertexBuffer;
+    VkDeviceAddress jointMatrixBuffer;
 };
 
 enum class MaterialPass :uint8_t {
@@ -95,7 +98,7 @@ struct Node : public IRenderable {
 
     std::weak_ptr<Node> parent; // parent pointer must be a week pointer to avoid circular dependencies
     std::vector<std::shared_ptr<Node>> children;
-
+    std::size_t meshIndex = -1;
     glm::mat4 localTransform;
     glm::mat4 worldTransform;
 

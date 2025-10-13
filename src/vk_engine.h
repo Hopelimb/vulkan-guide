@@ -68,16 +68,8 @@ struct ComputePipelineObject {
 constexpr unsigned int FRAME_OVERLAP = 2; // number of frames in flight
 
 
-struct Vertex {
-	glm::vec3 position;
-	float uv_x;
-	glm::vec3 normal;
-	float uv_y;
-	glm::vec4 color;
-};
-
-struct VertexBuffer {
-	Vertex vertices[];
+struct NodeMatrixBuffer {
+	glm::mat4 nodeMatrix;
 };
 
 struct GLTFMetallic_Roughness {
@@ -226,6 +218,7 @@ struct RenderObject {
 	Bounds bounds;
 	glm::mat4 transform;
 	VkDeviceAddress vertexBufferAddress{ 0 };
+	VkDeviceAddress nodeMatrixBufferAddress{0};
 };
 
 struct DrawContext {
@@ -282,7 +275,7 @@ public:
 	VkCommandBuffer _immCommandBuffer{ VK_NULL_HANDLE };
 	VkCommandPool _immCommandPool{ VK_NULL_HANDLE };
 
-	std::vector<std::shared_ptr<MeshAsset>> testMeshes;
+	//std::vector<std::shared_ptr<MeshAsset>> testMeshes;
 
 	std::vector<ComputePipelineObject> backgroundPipelines;
 	int currentBachgroundEffect{ 0 };
@@ -334,7 +327,7 @@ public:
 
 	//run main loop
 	void run();
-	GPUMeshBuffers uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
+	GPUMeshBuffers uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices, std::span<glm::mat4> nodeMatrices);
 	AllocatedBuffer create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
 	AllocatedImage create_image(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
 	AllocatedImage create_image(void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);

@@ -30,12 +30,13 @@ const char* PATH_SHADER_FRAG_MESH = "../../shaders/mesh.frag.spv";
 const char* PATH_SHADER_VERT_MESH = "../../shaders/mesh.vert.spv";
 
 const char* PATH_MESH_MONKEY = "../../assets/basicmesh.glb";
-const char* PATH_MESH_STRUCTURE = "../../assets/MikuSP.glb";
+const char* PATH_MESH_STRUCTURE = "../../assets/CubeSandbox.glb";
 
 VulkanEngine& VulkanEngine::Get() { return *loadedEngine; }
 
 bool is_visible(const RenderObject& obj, const glm::mat4& viewproj)
 {
+    return true;
     std::array<glm::vec3, 8> corners{
         glm::vec3 {1, 1, 1},
         glm::vec3 {1, 1, -1},
@@ -127,10 +128,11 @@ void VulkanEngine::cleanup()
 
         loadedScenes.clear();
 
-        for (auto& mesh : testMeshes) {
-            destroy_buffer(mesh->meshBuffers.indexBuffer);
-            destroy_buffer(mesh->meshBuffers.vertexBuffer);
-        }
+        //for (auto& mesh : testMeshes) {
+        //    destroy_buffer(mesh->meshBuffers.indexBuffer);
+        //    destroy_buffer(mesh->meshBuffers.vertexBuffer);
+        //    destroy_buffer(mesh->meshBuffers.nodeMatrixBuffer);
+        //}
 
 
         for (int i = 0; i < FRAME_OVERLAP; i++) {
@@ -161,7 +163,7 @@ void VulkanEngine::cleanup()
 void VulkanEngine::draw()
 {
     update_scene();
-    update_imgui();
+    //update_imgui();
 
 #pragma region synchronization_pre
     // nothing yet
@@ -296,7 +298,7 @@ void VulkanEngine::draw_recordRenderCmds(VkCommandBuffer cmdBuffer, uint32_t swa
     vkutil::transition_image(cmdBuffer, _swapchainImages[swapchainImageIndex],
         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
-    draw_imgui(cmdBuffer, _swapchainImageViews[swapchainImageIndex]);
+    //draw_imgui(cmdBuffer, _swapchainImageViews[swapchainImageIndex]);
 
     // set swapchain image layout to Present so we can draw it
     vkutil::transition_image(cmdBuffer, _swapchainImages[swapchainImageIndex],
@@ -448,6 +450,7 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmdBuffer)
         GPUDrawPushConstants push_constants{};
         push_constants.worldMatrix = renderObject.transform;
         push_constants.vertexBuffer = renderObject.vertexBufferAddress;
+        push_constants.jointMatrixBuffer = renderObject.nodeMatrixBufferAddress;
         vkCmdPushConstants(cmdBuffer, renderObject.material->pipeline->layout,
             VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &push_constants);
 
@@ -479,9 +482,9 @@ void VulkanEngine::update_scene()
 
     mainDrawContext.OpaqueSurfaces.clear();
     mainDrawContext.TransparentSurfaces.clear();
-    glm::mat4 scale = glm::scale(glm::vec3{ 5 });
+    glm::mat4 scale = glm::scale(glm::vec3{ 1 });
     glm::mat4 translation = glm::translate(glm::vec3{ 0, -0.8, -0.5 });
-    loadedScenes["structure"]->Draw(scale * translation, mainDrawContext);
+    loadedScenes["structure"]->Draw(glm::mat4(1.f), mainDrawContext);
     //loadedNodes["Suzanne"]->Draw(glm::mat4{1.f}, mainDrawContext);
     //for (int x = -3; x < 3; x++) {
 
@@ -496,8 +499,8 @@ void VulkanEngine::update_scene()
     glm::mat4 viewMatrix = mainCamera.getViewMatrix();
     constexpr float fov = glm::radians(70.f);
     float aspect = (float)_windowExtent.width / _windowExtent.height;
-    float farPlane = 0.1f;
-    float nearPlane = 10000.f;
+    float farPlane = 0.001f;
+    float nearPlane = 10000000.f;
     glm::mat4 projection = glm::perspective(fov, aspect, nearPlane, farPlane);
     projection[1][1] *= -1; // vulkan inverts the Y axis so we need to invert our projection matrix
 
@@ -786,7 +789,7 @@ void VulkanEngine::init_pipelines()
 
 void VulkanEngine::init_create_resources() {
 
-    testMeshes = loadGltfMeshes(this, PATH_MESH_MONKEY).value();
+    //testMeshes = loadGltfMeshes(this, PATH_MESH_MONKEY).value();
 
     VkExtent3D size = {
         1,1,1
@@ -850,20 +853,20 @@ void VulkanEngine::init_create_resources() {
     //    _globalDescriptorAllocator
     //);
 
-    for (auto& m : testMeshes) {
-        std::shared_ptr<MeshNode> newNode = std::make_shared<MeshNode>();
-        newNode->mesh = m;
+    //for (auto& m : testMeshes) {
+    //    std::shared_ptr<MeshNode> newNode = std::make_shared<MeshNode>();
+    //    newNode->mesh = m;
 
-        newNode->localTransform = glm::mat4(1.f);
-        newNode->worldTransform = glm::mat4(1.f);
+    //    newNode->localTransform = glm::mat4(1.f);
+    //    newNode->worldTransform = glm::mat4(1.f);
 
-        for (auto& s : newNode->mesh->surfaces) {
-            s.material = std::make_shared<GLTFMaterial>();
-            //s.material->data = defaultMaterial;
-        }
+    //    for (auto& s : newNode->mesh->surfaces) {
+    //        s.material = std::make_shared<GLTFMaterial>();
+    //        //s.material->data = defaultMaterial;
+    //    }
 
-        loadedNodes[m->name] = std::move(newNode);
-    }
+    //    loadedNodes[m->name] = std::move(newNode);
+    //}
 
 	mainCamera.velocity = glm::vec3(0, 0, 0);
 	mainCamera.position = glm::vec3(0, 0, 5);
@@ -1242,10 +1245,11 @@ void VulkanEngine::destroy_image(const AllocatedImage& image)
     vmaDestroyImage(_allocator, image.image, image.allocation);
 }
 
-GPUMeshBuffers VulkanEngine::uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices)
+GPUMeshBuffers VulkanEngine::uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices, std::span<glm::mat4> nodeMatrices)
 {
 	const size_t vertexBufferSize = vertices.size() * sizeof(Vertex);
 	const size_t indexBufferSize = indices.size() * sizeof(uint32_t);
+    const size_t nodeMatricesSize = nodeMatrices.size() * sizeof(glm::mat4);
 
     GPUMeshBuffers newSurface{};
 
@@ -1253,14 +1257,23 @@ GPUMeshBuffers VulkanEngine::uploadMesh(std::span<uint32_t> indices, std::span<V
         vertexBufferSize,
 		VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
         VMA_MEMORY_USAGE_GPU_ONLY);
-
-
     VkBufferDeviceAddressInfo deviceAddressInfo{
         .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
 		.buffer = newSurface.vertexBuffer.buffer,
     };
 	newSurface.vertexBufferAddress = vkGetBufferDeviceAddress(_device, &deviceAddressInfo);
 
+
+    newSurface.jointMatrixBuffer = create_buffer(
+        nodeMatricesSize, 
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+        VMA_MEMORY_USAGE_CPU_TO_GPU
+    );
+    VkBufferDeviceAddressInfo nodeMatrixBufferAddressInfo{
+        .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+        .buffer = newSurface.jointMatrixBuffer.buffer,
+    };
+    newSurface.jointMatrixBufferAddress = vkGetBufferDeviceAddress(_device, &nodeMatrixBufferAddressInfo);
 
     newSurface.indexBuffer = create_buffer(
         indexBufferSize,
@@ -1269,7 +1282,7 @@ GPUMeshBuffers VulkanEngine::uploadMesh(std::span<uint32_t> indices, std::span<V
     );
 
     AllocatedBuffer staging = create_buffer(
-        vertexBufferSize + indexBufferSize,
+        vertexBufferSize + indexBufferSize + nodeMatricesSize,
         VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
         VMA_MEMORY_USAGE_CPU_ONLY
     );
@@ -1278,6 +1291,7 @@ GPUMeshBuffers VulkanEngine::uploadMesh(std::span<uint32_t> indices, std::span<V
 
 	memcpy((uint8_t*)data, vertices.data(), vertexBufferSize);
 	memcpy((uint8_t*)data + vertexBufferSize, indices.data(), indexBufferSize);
+    memcpy((uint8_t*)data + vertexBufferSize + indexBufferSize, nodeMatrices.data(), nodeMatricesSize);
 
     immediate_submit([&](VkCommandBuffer cmd) {
         VkBufferCopy vertexCopy{
@@ -1292,6 +1306,12 @@ GPUMeshBuffers VulkanEngine::uploadMesh(std::span<uint32_t> indices, std::span<V
             .size = indexBufferSize,
         };
         vkCmdCopyBuffer(cmd, staging.buffer, newSurface.indexBuffer.buffer, 1, &indexCopy);
+        VkBufferCopy nodeMatrixCopy{
+            .srcOffset = vertexBufferSize + indexBufferSize,
+            .dstOffset = 0,
+            .size = nodeMatricesSize,
+        };
+        vkCmdCopyBuffer(cmd, staging.buffer, newSurface.jointMatrixBuffer.buffer, 1, &nodeMatrixCopy);
     });
 
     destroy_buffer(staging);
@@ -1451,7 +1471,7 @@ void MeshNode::Draw(const glm::mat4& topMatrix, DrawContext& ctx)
         def.bounds = s.bounds;
         def.transform = nodeMatrix;
         def.vertexBufferAddress = mesh->meshBuffers.vertexBufferAddress;
-
+        def.nodeMatrixBufferAddress = mesh->meshBuffers.jointMatrixBufferAddress;
         if (s.material->data.passType == MaterialPass::Transparent) {
             ctx.TransparentSurfaces.push_back(def);
         }
