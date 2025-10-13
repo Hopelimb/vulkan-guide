@@ -17,6 +17,9 @@ VkFilter extract_filter(fastgltf::Filter filter);
 VkSamplerMipmapMode extract_mipmap_mode(fastgltf::Filter filter);
 std::optional<AllocatedImage> load_image(VulkanEngine* engine, fastgltf::Asset& asset, fastgltf::Image& image);
 void create_image_from_data(unsigned char* data, int width, int height, AllocatedImage& newImage, VulkanEngine* engine);
+bool LoadGLTF(VulkanEngine* engine, std::string filePath, fastgltf::Asset& gltf);
+
+
 
 std::optional<AllocatedImage> load_image(VulkanEngine* engine, fastgltf::Asset& asset, fastgltf::Image& image)
 {
@@ -81,60 +84,26 @@ void create_image_from_data(unsigned char* data, int width, int height, Allocate
 }
 
 
-std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine* engine, std::string filePath) {
+std::optional<std::shared_ptr<RenderObjectData>> GetRenderObjectDataFromGltf(VulkanEngine* engine, std::string filePath) {
 	fmt::print("Loading GLTF: {}\n", filePath);
-
-	std::shared_ptr<LoadedGLTF> scene = std::make_shared<LoadedGLTF>();
+	std::shared_ptr<RenderObjectData> scene = std::make_shared<RenderObjectData>();
 	scene->creator = engine;
-	LoadedGLTF& file = *scene.get();
+	RenderObjectData& file = *scene.get();
+	fastgltf::Asset gltf{};
 
-	fastgltf::Parser parser;
-	
-	constexpr auto gltfOptions = fastgltf::Options::DontRequireValidAssetMember |
-		fastgltf::Options::AllowDouble |
-		fastgltf::Options::LoadGLBBuffers |
-		fastgltf::Options::LoadExternalBuffers;
-
-	fastgltf::GltfDataBuffer data;
-	data.loadFromFile(filePath);
-
-	fastgltf::Asset gltf;
-
-	std::filesystem::path path = filePath;
-
-	auto type = fastgltf::determineGltfFileType(&data);
-	if (type == fastgltf::GltfType::glTF) {
-		auto load = parser.loadGLTF(&data, path.parent_path(), gltfOptions);
-		if (load) {
-			gltf = std::move(load.get());
-		}
-		else {
-			std::cerr << "Failed to load glTF: " << fastgltf::to_underlying(load.error()) << std::endl;
-			return {};
-		}
-	}
-	else if (type == fastgltf::GltfType::GLB) {
-		auto load = parser.loadBinaryGLTF(&data, path.parent_path(), gltfOptions);
-		if (load) {
-			gltf = std::move(load.get());
-		}
-		else {
-			std::cerr << "Failed to load glTF: " << fastgltf::to_underlying(load.error()) << std::endl;
-			return {};
-		}
-	}
-	else {
-		std::cerr << "Failed to determine glTF container" << std::endl;
+	if (!LoadGLTF(engine, filePath, gltf))
+	{
+		fmt::println("failed to load GLTF : {}", filePath);
 		return {};
 	}
 
-	std::vector<DescriptorAllocatorGrowable::PoolSizeRatio> sizes =
+	std::vector<DescriptorAllocatorGrowable::PoolSizeRatio> ratio =
 	{
 		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 3 },
 		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 3},
-		{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1},
+		{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 3},
 	};
-	file.descriptorPool.init(engine->_device, gltf.materials.size(), sizes);
+	file.descriptorPool.init(engine->_device, gltf.materials.size(), ratio);
 
 	// convert the gltf samplers to VkSamplers which's format is compatible with vulkan
 	for (fastgltf::Sampler& sampler : gltf.samplers) {
@@ -501,13 +470,56 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine* engine, std::s
 	return scene;
 }
 
-void LoadedGLTF::Draw(const glm::mat4& topMatrix, DrawContext& ctx) {
+bool LoadGLTF(VulkanEngine* engine, std::string filePath, fastgltf::Asset& gltf)
+{
+	fastgltf::Parser parser;
+	constexpr auto gltfOptions = fastgltf::Options::DontRequireValidAssetMember |
+		fastgltf::Options::AllowDouble |
+		fastgltf::Options::LoadGLBBuffers |
+		fastgltf::Options::LoadExternalBuffers;
+
+	fastgltf::GltfDataBuffer data;
+	data.loadFromFile(filePath);
+
+	std::filesystem::path path = filePath;
+
+	auto type = fastgltf::determineGltfFileType(&data);
+	if (type == fastgltf::GltfType::glTF) {
+		auto load = parser.loadGLTF(&data, path.parent_path(), gltfOptions);
+		if (load) {
+			gltf = std::move(load.get());
+		}
+		else {
+			std::cerr << "Failed to load glTF: " << fastgltf::to_underlying(load.error()) << std::endl;
+			return false;
+		}
+	}
+	else if (type == fastgltf::GltfType::GLB) {
+		auto load = parser.loadBinaryGLTF(&data, path.parent_path(), gltfOptions);
+		if (load) {
+			gltf = std::move(load.get());
+		}
+		else {
+			std::cerr << "Failed to load glTF: " << fastgltf::to_underlying(load.error()) << std::endl;
+			return false;
+		}
+	}
+	else {
+		std::cerr << "Failed to determine glTF container" << std::endl;
+		return false;
+	}
+
+	return true;
+}
+
+
+void RenderObjectData::Draw(const glm::mat4& topMatrix, DrawContext& ctx) {
 	for (auto& n : topNodes) {
 		n->Draw(topMatrix, ctx);
 	}
 }
 
-void LoadedGLTF::clearAll()
+void RenderObjectData::clearAll()
 {
 	VkDevice dv = creator->_device;
 	descriptorPool.destroy_pools(dv);

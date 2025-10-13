@@ -96,7 +96,7 @@ void VulkanEngine::init()
     init_imgui();
     init_create_resources();
     // everything went fine
-	auto structureFile = loadGltf(this, PATH_MESH_STRUCTURE);
+	auto structureFile = GetRenderObjectDataFromGltf(this, PATH_MESH_STRUCTURE);
     assert(structureFile.has_value());
     loadedScenes["structure"] = structureFile.value();
 

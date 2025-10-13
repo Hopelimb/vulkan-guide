@@ -43,7 +43,7 @@ struct MeshAsset {
 class VulkanEngine;
 
 
-struct LoadedGLTF : public IRenderable{
+struct RenderObjectData : public IRenderable{
 	std::unordered_map<std::string, std::shared_ptr<MeshAsset>> meshes;
 	std::unordered_map<std::string, std::shared_ptr<Node>> nodes;
 	std::unordered_map<std::string, AllocatedImage> images;
@@ -56,7 +56,7 @@ struct LoadedGLTF : public IRenderable{
 
 	VulkanEngine* creator;
 
-	~LoadedGLTF() { clearAll(); };
+	~RenderObjectData() { clearAll(); };
 
 	virtual void Draw(const glm::mat4& topMatrix, DrawContext& ctx);
 
@@ -65,6 +65,6 @@ private:
 	void clearAll();
 };
 
-std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine* engine, std::string filePath);
+std::optional<std::shared_ptr<RenderObjectData>> GetRenderObjectDataFromGltf(VulkanEngine* engine, std::string filePath);
 
 //std::optional<std::vector<std::shared_ptr<MeshAsset>>> loadGltfMeshes(VulkanEngine* engine, std::filesystem::path filePath);

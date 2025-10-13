@@ -304,7 +304,7 @@ public:
 
 	Camera mainCamera;
 
-	std::unordered_map<std::string, std::shared_ptr<LoadedGLTF>> loadedScenes;
+	std::unordered_map<std::string, std::shared_ptr<RenderObjectData>> loadedScenes;
 
 	EngineStats stats;
 
