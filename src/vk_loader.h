@@ -44,18 +44,15 @@ class VulkanEngine;
 
 
 struct RenderObjectData : public IRenderable{
+	VulkanEngine* creator;
+	DescriptorAllocatorGrowable descriptorPool;
+	std::vector<VkSampler> samplers;
 	std::unordered_map<std::string, std::shared_ptr<MeshAsset>> meshes;
 	std::unordered_map<std::string, std::shared_ptr<Node>> nodes;
 	std::unordered_map<std::string, AllocatedImage> images;
 	std::unordered_map<std::string, std::shared_ptr<GLTFMaterial>> materials;
-
 	std::vector<std::shared_ptr<Node>> topNodes;
-	std::vector<VkSampler> samplers;
-	DescriptorAllocatorGrowable descriptorPool;
 	AllocatedBuffer materialDataBuffer;
-
-	VulkanEngine* creator;
-
 	~RenderObjectData() { clearAll(); };
 
 	virtual void Draw(const glm::mat4& topMatrix, DrawContext& ctx);
