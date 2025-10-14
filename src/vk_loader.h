@@ -42,16 +42,15 @@ struct MeshAsset {
 
 class VulkanEngine;
 
-
 struct RenderObjectData : public IRenderable{
 	VulkanEngine* creator;
 	DescriptorAllocatorGrowable descriptorPool;
 	std::vector<VkSampler> samplers;
-	std::unordered_map<std::string, std::shared_ptr<MeshAsset>> meshes;
-	std::unordered_map<std::string, std::shared_ptr<Node>> nodes;
-	std::unordered_map<std::string, AllocatedImage> images;
-	std::unordered_map<std::string, std::shared_ptr<EngineMaterial>> materials;
+	std::vector<AllocatedImage> images;
+	std::vector<std::shared_ptr<MeshAsset>> meshes;
+	std::vector<std::shared_ptr<Node>> nodes;
 	std::vector<std::shared_ptr<Node>> topNodes;
+	std::vector<std::shared_ptr<EngineMaterial>> materials;
 	AllocatedBuffer materialDataBuffer;
 	~RenderObjectData() { clearAll(); };
 
@@ -63,6 +62,3 @@ private:
 };
 
 std::optional<std::shared_ptr<RenderObjectData>> GetRenderObjectDataFromGltf(VulkanEngine* engine, std::string filePath);
-
-
-//std::optional<std::vector<std::shared_ptr<MeshAsset>>> loadGltfMeshes(VulkanEngine* engine, std::filesystem::path filePath);

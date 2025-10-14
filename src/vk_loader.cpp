@@ -18,9 +18,7 @@ VkSamplerMipmapMode extract_mipmap_mode(fastgltf::Filter filter);
 std::optional<AllocatedImage> load_image(VulkanEngine* engine, fastgltf::Asset& asset, fastgltf::Image& image);
 void create_image_from_data(unsigned char* data, int width, int height, AllocatedImage& newImage, VulkanEngine* engine);
 bool LoadGLTF(VulkanEngine* engine, std::string filePath, fastgltf::Asset& gltf);
-void ExtractMaterialData(RenderObjectData& resultRef, fastgltf::Asset& gltf, std::vector<std::shared_ptr<EngineMaterial>>& materials, VulkanEngine* engine, std::vector<AllocatedImage>& images);
-
-
+void ExtractMaterialData(RenderObjectData& resultRef, fastgltf::Asset& gltf, VulkanEngine* engine);
 
 std::optional<AllocatedImage> load_image(VulkanEngine* engine, fastgltf::Asset& asset, fastgltf::Image& image)
 {
@@ -127,11 +125,6 @@ std::optional<std::shared_ptr<RenderObjectData>> GetRenderObjectDataFromGltf(Vul
 		resultRef.samplers.push_back(newSampler);
 	}
 
-	std::vector<std::shared_ptr<MeshAsset>> loadedMeshes;
-	std::vector<std::shared_ptr<Node>> loadedNodes;
-	std::vector<AllocatedImage> loadedImages;
-	std::vector<std::shared_ptr<EngineMaterial>> loadedMaterials;
-
 	for (fastgltf::Node& node : originalGltfData.nodes) {
 		std::shared_ptr<Node> newNode{};
 
@@ -143,9 +136,7 @@ std::optional<std::shared_ptr<RenderObjectData>> GetRenderObjectDataFromGltf(Vul
 			newNode = std::make_shared<Node>();
 		}
 
-		loadedNodes.push_back(newNode);
-		resultRef.nodes[node.name.c_str()];
-
+		resultRef.nodes.push_back(newNode);
 
 		fastgltf::visitor visitors{
 			[&](fastgltf::Node::TransformMatrix matrix) {
@@ -166,38 +157,33 @@ std::optional<std::shared_ptr<RenderObjectData>> GetRenderObjectDataFromGltf(Vul
 		std::visit(visitors, node.transform);
 	}
 	for (int i = 0; i < originalGltfData.nodes.size(); i++) {
-		std::shared_ptr<Node>& sceneNode = loadedNodes[i];
+		std::shared_ptr<Node>& sceneNode = resultRef.nodes[i];
 		fastgltf::Node& node = originalGltfData.nodes[i];
 
 		for (auto& c : node.children) {
-			sceneNode->children.push_back(loadedNodes[c]);
-			loadedNodes[c]->parent = sceneNode;
+			sceneNode->children.push_back(resultRef.nodes[c]);
+			resultRef.nodes[c]->parent = sceneNode;
 		}
 	}
-
 
 	// if there are no samplers defined, we need at least one default sampler which indicates as an error
 	for (fastgltf::Image& image : originalGltfData.images) {
 		std::optional<AllocatedImage> img = load_image(engine, originalGltfData, image);
 		if (img.has_value()) {
-			loadedImages.push_back(*img);
-			resultRef.images[image.name.c_str()] = *img;
+			resultRef.images.push_back(*img);
 		}
 		else {
-			loadedImages.push_back(engine->_errorCheckerboardImage);
+			resultRef.images.push_back(engine->_errorCheckerboardImage);
 			fmt::print("Failed to load image: {}\n", image.name);
 		}
 	}
 
-
-
 	// 後でデータ充填しやすくために、マテリアルバッファの参照ビューを作る
-	ExtractMaterialData(resultRef, originalGltfData, loadedMaterials, engine, loadedImages);
+	ExtractMaterialData(resultRef, originalGltfData, engine);
 
 	for (fastgltf::Mesh& mesh : originalGltfData.meshes) {
 		std::shared_ptr<MeshAsset> newMesh = std::make_shared<MeshAsset>();
-		loadedMeshes.push_back(newMesh);
-		resultRef.meshes[mesh.name.c_str()] = newMesh;
+		resultRef.meshes.push_back(newMesh);
 		newMesh->name = mesh.name;
 		auto& vertices = newMesh->vertices;
 		auto& indices = newMesh->indices;
@@ -287,10 +273,10 @@ std::optional<std::shared_ptr<RenderObjectData>> GetRenderObjectDataFromGltf(Vul
 
 
 			if (p.materialIndex.has_value()) {
-				newSurface.material = loadedMaterials[p.materialIndex.value()];
+				newSurface.material = resultRef.materials[p.materialIndex.value()];
 			}
 			else {
-				newSurface.material = loadedMaterials[0];
+				newSurface.material = resultRef.materials[0];
 			}
 
 			glm::vec3 minpos = vertices[initial_vtx].position;
@@ -308,24 +294,24 @@ std::optional<std::shared_ptr<RenderObjectData>> GetRenderObjectDataFromGltf(Vul
 		}
 	}
 
-	for (auto i = 0; i < loadedNodes.size(); i++) {
-		auto& node = loadedNodes[i];
+	for (auto i = 0; i < resultRef.nodes.size(); i++) {
+		auto& node = resultRef.nodes[i];
 		if (node->parent.lock() == nullptr) {
 			resultRef.topNodes.push_back(node);
 			node->refreshTransform(glm::mat4(1.f));
 		}
 		if (node->meshIndex != -1)
 		{
-			auto& mesh = loadedMeshes[node->meshIndex];
+			auto& mesh = resultRef.meshes[node->meshIndex];
 			mesh->meshBuffers = engine->uploadMesh(mesh->indices, mesh->vertices, mesh->jointMatrices);
 			
-			static_cast<MeshNode*>(node.get())->mesh = loadedMeshes[node->meshIndex];
+			static_cast<MeshNode*>(node.get())->mesh = resultRef.meshes[node->meshIndex];
 		}
 	}
 	return result;
 }
 
-void ExtractMaterialData(RenderObjectData& resultRef, fastgltf::Asset& gltf, std::vector<std::shared_ptr<EngineMaterial>>& materials, VulkanEngine* engine, std::vector<AllocatedImage>& images)
+void ExtractMaterialData(RenderObjectData& resultRef, fastgltf::Asset& gltf, VulkanEngine* engine)
 {
 	size_t materialConstantsSize = sizeof(MaterialTemplate_PBR::MaterialConstants);
 	resultRef.materialDataBuffer = engine->create_buffer(
@@ -342,7 +328,7 @@ void ExtractMaterialData(RenderObjectData& resultRef, fastgltf::Asset& gltf, std
 	for (size_t materialIndex = 0; materialIndex < gltf.materials.size(); materialIndex++) {
 		auto& gltfMaterialData = gltf.materials[materialIndex];
 		std::shared_ptr<EngineMaterial> newMat = std::make_shared<EngineMaterial>();
-		materials.push_back(newMat);
+		resultRef.materials.push_back(newMat);
 		//resultRef.materials[gltfMaterialData.name.c_str()] = newMat;
 
 		MaterialTemplate_PBR::MaterialConstants constants{
@@ -379,7 +365,7 @@ void ExtractMaterialData(RenderObjectData& resultRef, fastgltf::Asset& gltf, std
 			size_t textureIndex = gltfMaterialData.pbrData.baseColorTexture.value().textureIndex;
 			size_t imageIndex = gltf.textures[textureIndex].imageIndex.value();
 			size_t samplerIndex = gltf.textures[textureIndex].samplerIndex.value();
-			materialResources.colorImage = images[imageIndex];
+			materialResources.colorImage = resultRef.images[imageIndex];
 			materialResources.colorSampler = resultRef.samplers[samplerIndex];
 		}
 
@@ -430,7 +416,6 @@ bool LoadGLTF(VulkanEngine* engine, std::string filePath, fastgltf::Asset& gltf)
 	return true;
 }
 
-
 void RenderObjectData::Draw(const glm::mat4& topMatrix, DrawContext& ctx) {
 	for (auto& n : topNodes) {
 		n->Draw(topMatrix, ctx);
@@ -443,13 +428,13 @@ void RenderObjectData::clearAll()
 	descriptorPool.destroy_pools(dv);
 	creator->destroy_buffer(materialDataBuffer);
 	
-	for (auto& [k, v] : meshes) {
+	for (auto& v: meshes) {
 		creator->destroy_buffer(v->meshBuffers.indexBuffer);
 		creator->destroy_buffer(v->meshBuffers.vertexBuffer);
 		creator->destroy_buffer(v->meshBuffers.jointMatrixBuffer);
 	}
 
-	for (auto& [k, v] : images) {
+	for (auto& v: images) {
 		if (v.image == creator->_errorCheckerboardImage.image) {
 			continue;
 		}
@@ -462,7 +447,6 @@ void RenderObjectData::clearAll()
 		vkDestroySampler(dv, sampler, nullptr);
 	}
 }
-
 
 VkFilter extract_filter(fastgltf::Filter filter) {
 	switch (filter) {
