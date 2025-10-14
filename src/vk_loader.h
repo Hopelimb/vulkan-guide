@@ -4,7 +4,7 @@
 #include <unordered_map>
 #include <filesystem>
 
-struct GLTFMaterial {
+struct EngineMaterial {
 
 	MaterialInstance data;
 };
@@ -28,7 +28,7 @@ struct GeoSurface {
 	uint32_t startIndex;
 	uint32_t count;
 	Bounds bounds;
-	std::shared_ptr<GLTFMaterial> material;
+	std::shared_ptr<EngineMaterial> material;
 };
 
 struct MeshAsset {
@@ -50,7 +50,7 @@ struct RenderObjectData : public IRenderable{
 	std::unordered_map<std::string, std::shared_ptr<MeshAsset>> meshes;
 	std::unordered_map<std::string, std::shared_ptr<Node>> nodes;
 	std::unordered_map<std::string, AllocatedImage> images;
-	std::unordered_map<std::string, std::shared_ptr<GLTFMaterial>> materials;
+	std::unordered_map<std::string, std::shared_ptr<EngineMaterial>> materials;
 	std::vector<std::shared_ptr<Node>> topNodes;
 	AllocatedBuffer materialDataBuffer;
 	~RenderObjectData() { clearAll(); };
@@ -63,5 +63,6 @@ private:
 };
 
 std::optional<std::shared_ptr<RenderObjectData>> GetRenderObjectDataFromGltf(VulkanEngine* engine, std::string filePath);
+
 
 //std::optional<std::vector<std::shared_ptr<MeshAsset>>> loadGltfMeshes(VulkanEngine* engine, std::filesystem::path filePath);

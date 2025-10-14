@@ -18,6 +18,7 @@ VkSamplerMipmapMode extract_mipmap_mode(fastgltf::Filter filter);
 std::optional<AllocatedImage> load_image(VulkanEngine* engine, fastgltf::Asset& asset, fastgltf::Image& image);
 void create_image_from_data(unsigned char* data, int width, int height, AllocatedImage& newImage, VulkanEngine* engine);
 bool LoadGLTF(VulkanEngine* engine, std::string filePath, fastgltf::Asset& gltf);
+void ExtractMaterialData(RenderObjectData& resultRef, fastgltf::Asset& gltf, std::vector<std::shared_ptr<EngineMaterial>>& materials, VulkanEngine* engine, std::vector<AllocatedImage>& images);
 
 
 
@@ -87,8 +88,8 @@ void create_image_from_data(unsigned char* data, int width, int height, Allocate
 std::optional<std::shared_ptr<RenderObjectData>> GetRenderObjectDataFromGltf(VulkanEngine* engine, std::string filePath) {
 	fmt::print("Loading GLTF: {}\n", filePath);
 	// まずはgltfデータをメモリにロードする
-	fastgltf::Asset gltf{};
-	if (!LoadGLTF(engine, filePath, gltf))
+	fastgltf::Asset originalGltfData{};
+	if (!LoadGLTF(engine, filePath, originalGltfData))
 	{
 		fmt::println("failed to load GLTF : {}", filePath);
 		return {};
@@ -105,10 +106,10 @@ std::optional<std::shared_ptr<RenderObjectData>> GetRenderObjectDataFromGltf(Vul
 		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 3},
 		{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 3},
 	};
-	resultRef.descriptorPool.init(engine->_device, gltf.materials.size(), ratio);
+	resultRef.descriptorPool.init(engine->_device, originalGltfData.materials.size(), ratio);
 
 	// convert the gltf samplers to VkSamplers which's format is compatible with vulkan
-	for (fastgltf::Sampler& sampler : gltf.samplers) {
+	for (fastgltf::Sampler& sampler : originalGltfData.samplers) {
 		VkSamplerCreateInfo samplerInfo
 		{
 			.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
@@ -128,10 +129,10 @@ std::optional<std::shared_ptr<RenderObjectData>> GetRenderObjectDataFromGltf(Vul
 
 	std::vector<std::shared_ptr<MeshAsset>> loadedMeshes;
 	std::vector<std::shared_ptr<Node>> loadedNodes;
-	std::vector<AllocatedImage> images;
-	std::vector<std::shared_ptr<GLTFMaterial>> materials;
+	std::vector<AllocatedImage> loadedImages;
+	std::vector<std::shared_ptr<EngineMaterial>> loadedMaterials;
 
-	for (fastgltf::Node& node : gltf.nodes) {
+	for (fastgltf::Node& node : originalGltfData.nodes) {
 		std::shared_ptr<Node> newNode{};
 
 		if (node.meshIndex.has_value()) {
@@ -164,9 +165,9 @@ std::optional<std::shared_ptr<RenderObjectData>> GetRenderObjectDataFromGltf(Vul
 		};
 		std::visit(visitors, node.transform);
 	}
-	for (int i = 0; i < gltf.nodes.size(); i++) {
+	for (int i = 0; i < originalGltfData.nodes.size(); i++) {
 		std::shared_ptr<Node>& sceneNode = loadedNodes[i];
-		fastgltf::Node& node = gltf.nodes[i];
+		fastgltf::Node& node = originalGltfData.nodes[i];
 
 		for (auto& c : node.children) {
 			sceneNode->children.push_back(loadedNodes[c]);
@@ -176,172 +177,24 @@ std::optional<std::shared_ptr<RenderObjectData>> GetRenderObjectDataFromGltf(Vul
 
 
 	// if there are no samplers defined, we need at least one default sampler which indicates as an error
-	for (fastgltf::Image& image : gltf.images) {
-		std::optional<AllocatedImage> img = load_image(engine, gltf, image);
+	for (fastgltf::Image& image : originalGltfData.images) {
+		std::optional<AllocatedImage> img = load_image(engine, originalGltfData, image);
 		if (img.has_value()) {
-			images.push_back(*img);
+			loadedImages.push_back(*img);
 			resultRef.images[image.name.c_str()] = *img;
 		}
 		else {
-			images.push_back(engine->_errorCheckerboardImage);
+			loadedImages.push_back(engine->_errorCheckerboardImage);
 			fmt::print("Failed to load image: {}\n", image.name);
 		}
 	}
 
-	resultRef.materialDataBuffer = engine->create_buffer(
-		sizeof(GLTFMetallic_Roughness::MaterialConstants) * gltf.materials.size(),
-		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-		VMA_MEMORY_USAGE_CPU_TO_GPU
-	);
-	int data_index = 0;
-	GLTFMetallic_Roughness::MaterialConstants* sceneMaterialConstants =
-		static_cast<GLTFMetallic_Roughness::MaterialConstants*> (resultRef.materialDataBuffer.allocationInfo.pMappedData);
-
-	for (fastgltf::Material& material : gltf.materials) {
-		std::shared_ptr<GLTFMaterial> newMat = std::make_shared<GLTFMaterial>();
-		materials.push_back(newMat);
-		resultRef.materials[material.name.c_str()] = newMat;
-
-		GLTFMetallic_Roughness::MaterialConstants constants{
-			.colorFactors = glm::vec4(
-				material.pbrData.baseColorFactor[0],
-				material.pbrData.baseColorFactor[1],
-				material.pbrData.baseColorFactor[2],
-				material.pbrData.baseColorFactor[3]
-			),
-			.metal_rough_factors = glm::vec4(
-				material.pbrData.metallicFactor,
-				material.pbrData.roughnessFactor,
-				0, 0
-			)
-		};
-		sceneMaterialConstants[data_index] = constants;
-
-		MaterialPass passType = MaterialPass::MainColor;
-		if (material.alphaMode == fastgltf::AlphaMode::Blend) {
-			passType = MaterialPass::Transparent;
-		}
-
-		GLTFMetallic_Roughness::MaterialResources materialResources{
-			.colorImage = engine->_whiteImage,
-			.colorSampler = engine->_defaultSamplerLinear,
-			.metalRoughImage = engine->_whiteImage,
-			.metalRoughSampler = engine->_defaultSamplerLinear,
-		};
-		materialResources.dataBuffer = resultRef.materialDataBuffer.buffer;
-		materialResources.dataBufferOffset = data_index * sizeof(GLTFMetallic_Roughness::MaterialConstants);
-
-		if (material.pbrData.baseColorTexture.has_value()) {
-			auto textureIndex = material.pbrData.baseColorTexture.value().textureIndex;
-			size_t imageIndex = gltf.textures[textureIndex].imageIndex.value();
-			size_t samplerIndex = gltf.textures[textureIndex].samplerIndex.value();
-
-			materialResources.colorImage = images[imageIndex];
-			materialResources.colorSampler = resultRef.samplers[samplerIndex];
-		}
-		newMat->data = engine->metalRoughMaterial.write_material(engine->_device, passType, materialResources, resultRef.descriptorPool);
-		//newMat->data = engine->metalRoughMaterial.write_material2(engine->_device, passType, data_index, materialResources, file.descriptorPool);
-		data_index++;
-	}
-
-//#pragma region Animation
-//	// とりあえず０番目の固定ポージングにする
-//	auto& anim = gltf.animations[0];
-//
-//	std::vector<glm::mat4> bornTransforms;
-//	bornTransforms.resize(gltf.nodes.size());
-//	glm::vec3 tl{0,0,0};
-//	glm::quat rot = glm::quat();
-//	glm::vec3 sc{ 1,1,1 };
-//	std::vector<std::vector<glm::mat4>> animData;
-//	std::vector<glm::vec3> translateData;
-//	std::vector<glm::quat> rotationData;
-//	std::vector<glm::vec3> scaleData;
-//	animData.resize(gltf.nodes.size());
-//	for (size_t i = 0; i < anim.channels.size(); i++)
-//	{
-//		auto& channel = anim.channels[i];
-//		const auto& sampler = anim.samplers[channel.samplerIndex];
-//		int nodeIndex = channel.nodeIndex;
-//		auto path = channel.path;
-//
-//
-//		auto& inputAccessor = gltf.accessors[sampler.inputAccessor];
-//		auto& outputAccessor = gltf.accessors[sampler.outputAccessor];
-//		animData[nodeIndex].resize(inputAccessor.count);
-//		translateData.resize(inputAccessor.count);
-//		rotationData.resize(inputAccessor.count);
-//		scaleData.resize(inputAccessor.count);
-//
-//		float t0 = 0;
-//		fastgltf::iterateAccessorWithIndex<float>(gltf, inputAccessor,
-//			[&](float time, size_t index) {
-//				if (index == 0) {
-//					t0 = time;
-//				}
-//			});
-//		if (path == fastgltf::AnimationPath::Translation)
-//		{
-//			glm::vec3 value;
-//			fastgltf::iterateAccessorWithIndex<glm::vec3>(gltf, outputAccessor,
-//				[&](glm::vec3 v, size_t index) {
-//					{
-//						translateData[index] = v;
-//					}
-//				});
-//		}
-//		else if (path == fastgltf::AnimationPath::Rotation)
-//		{
-//			glm::quat value;
-//			fastgltf::iterateAccessorWithIndex<glm::vec4>(gltf, outputAccessor,
-//				[&](glm::vec4 v, size_t index) {
-//					{
-//						rot = glm::quat(v[3], v[0], v[1], v[2]);
-//						rotationData[index] = rot;
-//					}
-//				});
-//		}
-//		else if (path == fastgltf::AnimationPath::Scale)
-//		{
-//			glm::vec3 value;
-//			fastgltf::iterateAccessorWithIndex<glm::vec3>(gltf, outputAccessor,
-//				[&](glm::vec3 v, size_t index) {
-//					{
-//						scaleData[index] = sc;
-//					}
-//				});
-//		}
-//
-//		for (auto i = 0; i < animData[nodeIndex].size(); i++)
-//		{
-//			auto mt = glm::translate(translateData[i]);
-//			auto mr = glm::toMat4(rotationData[i]);
-//			auto ms = glm::mat4(1.f);
-//
-//			animData[nodeIndex][i] = ms * mr * mt;
-//		}
-//
-//		//if (i % 3 == 0)
-//		//{
-//		//	glm::mat4 tm = glm::translate(glm::mat4(1.f), tl);
-//		//	glm::mat4 rm = glm::toMat4(rot);
-//		//	glm::mat4 sm = glm::scale(glm::mat4(1.f), sc);
-//		//	bornTransforms[nodeIndex] = glm::mat4(1.f);
-//		//}
-//	}
-//
-//	for (auto i = 0; i < animData.size(); i++)
-//	{
-//		if (animData[i].size() > 0)
-//		{
-//			loadedNodes[i]->localTransform = animData[i][100];
-//		}
-//		loadedNodes[i]->refreshTransform(loadedNodes[i]->localTransform);
-//	}
-//#pragma endregion
 
 
-	for (fastgltf::Mesh& mesh : gltf.meshes) {
+	// 後でデータ充填しやすくために、マテリアルバッファの参照ビューを作る
+	ExtractMaterialData(resultRef, originalGltfData, loadedMaterials, engine, loadedImages);
+
+	for (fastgltf::Mesh& mesh : originalGltfData.meshes) {
 		std::shared_ptr<MeshAsset> newMesh = std::make_shared<MeshAsset>();
 		loadedMeshes.push_back(newMesh);
 		resultRef.meshes[mesh.name.c_str()] = newMesh;
@@ -357,24 +210,24 @@ std::optional<std::shared_ptr<RenderObjectData>> GetRenderObjectDataFromGltf(Vul
 
 		for (auto& p : mesh.primitives) {
 #pragma region load indeces info
-			fastgltf::Accessor& indexaccessor = gltf.accessors[p.indicesAccessor.value()];
+			fastgltf::Accessor& indexaccessor = originalGltfData.accessors[p.indicesAccessor.value()];
 			GeoSurface newSurface{
 				.startIndex = static_cast<uint32_t>(indices.size()),
 				.count = static_cast<uint32_t>(indexaccessor.count),
 			};
 
 			size_t initial_vtx = vertices.size();
-			fastgltf::iterateAccessor<uint32_t>(gltf, indexaccessor, 
+			fastgltf::iterateAccessor<uint32_t>(originalGltfData, indexaccessor, 
 				[&](uint32_t idx) {
 					indices.push_back(idx + initial_vtx);
 				});
 #pragma endregion
 
 #pragma region load vertex positions info
-			fastgltf::Accessor& posAccessor = gltf.accessors[p.findAttribute("POSITION")->second];
+			fastgltf::Accessor& posAccessor = originalGltfData.accessors[p.findAttribute("POSITION")->second];
 			vertices.resize(vertices.size() + posAccessor.count);
 
-			fastgltf::iterateAccessorWithIndex<glm::vec3>(gltf, posAccessor,
+			fastgltf::iterateAccessorWithIndex<glm::vec3>(originalGltfData, posAccessor,
 				[&](glm::vec3 v, size_t index) {
 					Vertex newvtx{
 						.position = v,
@@ -391,7 +244,7 @@ std::optional<std::shared_ptr<RenderObjectData>> GetRenderObjectDataFromGltf(Vul
 #pragma region load normal info
 			auto normalAttribute = p.findAttribute("NORMAL");
 			if (normalAttribute != p.attributes.end()) {
-				fastgltf::iterateAccessorWithIndex<glm::vec3>(gltf, gltf.accessors[(*normalAttribute).second],
+				fastgltf::iterateAccessorWithIndex<glm::vec3>(originalGltfData, originalGltfData.accessors[(*normalAttribute).second],
 					[&](glm::vec3 normal, size_t index) {
 						vertices[initial_vtx + index].normal = normal;
 					}
@@ -402,7 +255,7 @@ std::optional<std::shared_ptr<RenderObjectData>> GetRenderObjectDataFromGltf(Vul
 #pragma region load UVs info
 			auto uvAttribute = p.findAttribute("TEXCOORD_0");
 			if (uvAttribute != p.attributes.end()) {
-				fastgltf::iterateAccessorWithIndex<glm::vec2>(gltf, gltf.accessors[(*uvAttribute).second],
+				fastgltf::iterateAccessorWithIndex<glm::vec2>(originalGltfData, originalGltfData.accessors[(*uvAttribute).second],
 					[&](glm::vec2 uv, size_t index) {
 						vertices[initial_vtx + index].uv_x = uv.x;
 						vertices[initial_vtx + index].uv_y = uv.y;
@@ -413,7 +266,7 @@ std::optional<std::shared_ptr<RenderObjectData>> GetRenderObjectDataFromGltf(Vul
 
 			auto jointAttribute = p.findAttribute("JOINTS_0");
 			if (jointAttribute != p.attributes.end()) {
-				fastgltf::iterateAccessorWithIndex<glm::vec4>(gltf, gltf.accessors[(*jointAttribute).second],
+				fastgltf::iterateAccessorWithIndex<glm::vec4>(originalGltfData, originalGltfData.accessors[(*jointAttribute).second],
 					[&](glm::vec4 joints, size_t index) {
 						vertices[initial_vtx + index].joints = joints;
 					}
@@ -423,7 +276,7 @@ std::optional<std::shared_ptr<RenderObjectData>> GetRenderObjectDataFromGltf(Vul
 #pragma region load color info
 			auto colorAttribute = p.findAttribute("WEIGHTS_0");
 			if (colorAttribute != p.attributes.end()) {
-				fastgltf::iterateAccessorWithIndex<glm::vec4>(gltf, gltf.accessors[(*colorAttribute).second],
+				fastgltf::iterateAccessorWithIndex<glm::vec4>(originalGltfData, originalGltfData.accessors[(*colorAttribute).second],
 					[&](glm::vec4 weights, size_t index) {
 						vertices[initial_vtx + index].weights = weights;
 					}
@@ -434,10 +287,10 @@ std::optional<std::shared_ptr<RenderObjectData>> GetRenderObjectDataFromGltf(Vul
 
 
 			if (p.materialIndex.has_value()) {
-				newSurface.material = materials[p.materialIndex.value()];
+				newSurface.material = loadedMaterials[p.materialIndex.value()];
 			}
 			else {
-				newSurface.material = materials[0];
+				newSurface.material = loadedMaterials[0];
 			}
 
 			glm::vec3 minpos = vertices[initial_vtx].position;
@@ -450,7 +303,7 @@ std::optional<std::shared_ptr<RenderObjectData>> GetRenderObjectDataFromGltf(Vul
 			newSurface.bounds.origin = (maxpos + minpos) / 2.f;
 			newSurface.bounds.extents = (maxpos - minpos) / 2.f;
 			newSurface.bounds.sphereRadius = glm::length(newSurface.bounds.extents);
-
+			 
 			newMesh->surfaces.push_back(newSurface);
 		}
 	}
@@ -470,6 +323,69 @@ std::optional<std::shared_ptr<RenderObjectData>> GetRenderObjectDataFromGltf(Vul
 		}
 	}
 	return result;
+}
+
+void ExtractMaterialData(RenderObjectData& resultRef, fastgltf::Asset& gltf, std::vector<std::shared_ptr<EngineMaterial>>& materials, VulkanEngine* engine, std::vector<AllocatedImage>& images)
+{
+	size_t materialConstantsSize = sizeof(MaterialTemplate_PBR::MaterialConstants);
+	resultRef.materialDataBuffer = engine->create_buffer(
+		materialConstantsSize * gltf.materials.size(),
+		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+		VMA_MEMORY_USAGE_CPU_TO_GPU
+	);
+
+	std::span<MaterialTemplate_PBR::MaterialConstants> sceneMaterialConstantsRef(
+		static_cast<MaterialTemplate_PBR::MaterialConstants*> (resultRef.materialDataBuffer.allocationInfo.pMappedData),
+		gltf.materials.size()
+	);
+
+	for (size_t materialIndex = 0; materialIndex < gltf.materials.size(); materialIndex++) {
+		auto& gltfMaterialData = gltf.materials[materialIndex];
+		std::shared_ptr<EngineMaterial> newMat = std::make_shared<EngineMaterial>();
+		materials.push_back(newMat);
+		//resultRef.materials[gltfMaterialData.name.c_str()] = newMat;
+
+		MaterialTemplate_PBR::MaterialConstants constants{
+			.colorFactors = glm::vec4(
+				gltfMaterialData.pbrData.baseColorFactor[0],
+				gltfMaterialData.pbrData.baseColorFactor[1],
+				gltfMaterialData.pbrData.baseColorFactor[2],
+				gltfMaterialData.pbrData.baseColorFactor[3]
+			),
+				.metal_rough_factors = glm::vec4(
+					gltfMaterialData.pbrData.metallicFactor,
+					gltfMaterialData.pbrData.roughnessFactor,
+					0, 0
+				)
+		};
+		sceneMaterialConstantsRef[materialIndex] = constants;
+
+		MaterialPass passType = MaterialPass::MainColor;
+		if (gltfMaterialData.alphaMode == fastgltf::AlphaMode::Blend) {
+			passType = MaterialPass::Transparent;
+		}
+
+		MaterialTemplate_PBR::MaterialResources materialResources{
+			.colorImage = engine->_whiteImage,
+			.colorSampler = engine->_defaultSamplerLinear,
+			.metalRoughImage = engine->_whiteImage,
+			.metalRoughSampler = engine->_defaultSamplerLinear,
+		};
+		materialResources.dataBuffer = resultRef.materialDataBuffer.buffer;
+		materialResources.dataBufferOffset = materialIndex * materialConstantsSize;
+
+		// モデルデータにPBRマテリアルのベースカラーの情報が含まれる場合、それを適用する
+		if (gltfMaterialData.pbrData.baseColorTexture.has_value()) {
+			size_t textureIndex = gltfMaterialData.pbrData.baseColorTexture.value().textureIndex;
+			size_t imageIndex = gltf.textures[textureIndex].imageIndex.value();
+			size_t samplerIndex = gltf.textures[textureIndex].samplerIndex.value();
+			materialResources.colorImage = images[imageIndex];
+			materialResources.colorSampler = resultRef.samplers[samplerIndex];
+		}
+
+		// マテリアルの情報に基づき、DescriptorSetを更新する
+		newMat->data = engine->pbrTamplate.createMaterialInstance(engine->_device, passType, materialResources, resultRef.descriptorPool);
+	}
 }
 
 bool LoadGLTF(VulkanEngine* engine, std::string filePath, fastgltf::Asset& gltf)

@@ -72,7 +72,7 @@ struct NodeMatrixBuffer {
 	glm::mat4 nodeMatrix;
 };
 
-struct GLTFMetallic_Roughness {
+struct MaterialTemplate_PBR {
 	MaterialPipeline opaquePipeline;
 	MaterialPipeline transparentPipeline;
 
@@ -98,8 +98,7 @@ struct GLTFMetallic_Roughness {
 	void build_pipelines(VulkanEngine* engine);
 	void clear_resources(VkDevice device);
 
-	MaterialInstance write_material(VkDevice device, MaterialPass pass, const MaterialResources& resources, DescriptorAllocatorGrowable& descriptorAllocator);
-	MaterialInstance write_material2(VkDevice device, MaterialPass pass, int binding, const MaterialResources& resources, DescriptorAllocatorGrowable& descriptorAllocator);
+	MaterialInstance createMaterialInstance(VkDevice device, MaterialPass pass, const MaterialResources& resources, DescriptorAllocatorGrowable& descriptorAllocator);
 };
 
 struct EngineStats {
@@ -218,7 +217,7 @@ struct RenderObject {
 	Bounds bounds;
 	glm::mat4 transform;
 	VkDeviceAddress vertexBufferAddress{ 0 };
-	VkDeviceAddress nodeMatrixBufferAddress{0};
+	VkDeviceAddress jointMatrixBufferAddress{0};
 };
 
 struct DrawContext {
@@ -297,7 +296,7 @@ public:
 	VkDescriptorSetLayout _singleImageDescriptorlayout;
 
 	//MaterialInstance defaultMaterial;
-	GLTFMetallic_Roughness metalRoughMaterial;
+	MaterialTemplate_PBR pbrTamplate;
 
 	DrawContext mainDrawContext;
 	std::unordered_map<std::string, std::shared_ptr<Node>> loadedNodes;
