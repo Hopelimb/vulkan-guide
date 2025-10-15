@@ -20,6 +20,7 @@ void create_image_from_data(unsigned char* data, int width, int height, Allocate
 bool LoadGLTF(VulkanEngine* engine, std::string filePath, fastgltf::Asset& gltf);
 void ExtractMaterialData(RenderObjectData& resultRef, fastgltf::Asset& gltf, VulkanEngine* engine);
 void ExtractMeshData(RenderObjectData& resultRef, fastgltf::Asset& originalGltfData);
+void ExtractSamplerData(RenderObjectData& resultRef, fastgltf::Asset& originalGltfData, VulkanEngine* engine);
 
 std::optional<AllocatedImage> load_image(VulkanEngine* engine, fastgltf::Asset& asset, fastgltf::Image& image)
 {
@@ -107,24 +108,7 @@ std::optional<std::shared_ptr<RenderObjectData>> GetRenderObjectDataFromGltf(Vul
 	};
 	resultRef.descriptorPool.init(engine->_device, originalGltfData.materials.size(), ratio);
 
-	// convert the gltf samplers to VkSamplers which's format is compatible with vulkan
-	for (fastgltf::Sampler& sampler : originalGltfData.samplers) {
-		VkSamplerCreateInfo samplerInfo
-		{
-			.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-			.pNext = nullptr,
-			.minLod = 0.f,
-			.maxLod = VK_LOD_CLAMP_NONE,
-		};
-		samplerInfo.magFilter = extract_filter(sampler.magFilter.value_or(fastgltf::Filter::Nearest));
-		samplerInfo.minFilter = extract_filter(sampler.minFilter.value_or(fastgltf::Filter::Nearest));
-		samplerInfo.mipmapMode = extract_mipmap_mode(sampler.minFilter.value_or(fastgltf::Filter::Nearest));
-
-		VkSampler newSampler;
-		vkCreateSampler(engine->_device, &samplerInfo, nullptr, &newSampler);
-
-		resultRef.samplers.push_back(newSampler);
-	}
+	ExtractSamplerData(resultRef, originalGltfData, engine);
 
 	for (fastgltf::Node& node : originalGltfData.nodes) {
 		std::shared_ptr<Node> newNode{};
@@ -199,6 +183,28 @@ std::optional<std::shared_ptr<RenderObjectData>> GetRenderObjectDataFromGltf(Vul
 		}
 	}
 	return result;
+}
+
+void ExtractSamplerData(RenderObjectData& resultRef, fastgltf::Asset& originalGltfData, VulkanEngine* engine)
+{
+	// convert the gltf samplers to VkSamplers which's format is compatible with vulkan
+	for (fastgltf::Sampler& sampler : originalGltfData.samplers) {
+		VkSamplerCreateInfo samplerInfo
+		{
+			.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+			.pNext = nullptr,
+			.minLod = 0.f,
+			.maxLod = VK_LOD_CLAMP_NONE,
+		};
+		samplerInfo.magFilter = extract_filter(sampler.magFilter.value_or(fastgltf::Filter::Nearest));
+		samplerInfo.minFilter = extract_filter(sampler.minFilter.value_or(fastgltf::Filter::Nearest));
+		samplerInfo.mipmapMode = extract_mipmap_mode(sampler.minFilter.value_or(fastgltf::Filter::Nearest));
+
+		VkSampler newSampler;
+		vkCreateSampler(engine->_device, &samplerInfo, nullptr, &newSampler);
+
+		resultRef.samplers.push_back(newSampler);
+	}
 }
 
 void ExtractMeshData(RenderObjectData& resultRef, fastgltf::Asset& originalGltfData)
