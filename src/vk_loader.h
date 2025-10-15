@@ -61,5 +61,5 @@ private:
 	void clearAll();
 };
 
-std::optional<std::shared_ptr<RenderObjectData>> GetRenderObjectDataFromGltf(VulkanEngine* engine, std::string filePath);
+std::optional<std::shared_ptr<RenderObjectData>> CreateRenderObjectDataFromGltf(VulkanEngine* engine, std::string filePath);
 

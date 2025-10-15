@@ -18,10 +18,12 @@ VkSamplerMipmapMode extract_mipmap_mode(fastgltf::Filter filter);
 std::optional<AllocatedImage> load_image(VulkanEngine* engine, fastgltf::Asset& asset, fastgltf::Image& image);
 void create_image_from_data(unsigned char* data, int width, int height, AllocatedImage& newImage, VulkanEngine* engine);
 bool LoadGLTF(VulkanEngine* engine, std::string filePath, fastgltf::Asset& gltf);
-void ExtractMaterialData(RenderObjectData& resultRef, fastgltf::Asset& gltf, VulkanEngine* engine);
+void ExtractMaterialData(RenderObjectData& resultRef, fastgltf::Asset& originalGltfData);
 void ExtractMeshData(RenderObjectData& resultRef, fastgltf::Asset& originalGltfData);
-void ExtractSamplerData(RenderObjectData& resultRef, fastgltf::Asset& originalGltfData, VulkanEngine* engine);
-void ExtractImageData(RenderObjectData& resultRef, fastgltf::Asset& originalGltfData, VulkanEngine* engine);
+void ExtractSamplerData(RenderObjectData& resultRef, fastgltf::Asset& originalGltfData);
+void ExtractImageData(RenderObjectData& resultRef, fastgltf::Asset& originalGltfData);
+void ExtractNodeData(RenderObjectData& resultRef, fastgltf::Asset& originalGltfData);
+void UpdateNodeData(RenderObjectData& resultRef);
 
 std::optional<AllocatedImage> load_image(VulkanEngine* engine, fastgltf::Asset& asset, fastgltf::Image& image)
 {
@@ -86,7 +88,7 @@ void create_image_from_data(unsigned char* data, int width, int height, Allocate
 }
 
 
-std::optional<std::shared_ptr<RenderObjectData>> GetRenderObjectDataFromGltf(VulkanEngine* engine, std::string filePath) {
+std::optional<std::shared_ptr<RenderObjectData>> CreateRenderObjectDataFromGltf(VulkanEngine* engine, std::string filePath) {
 	fmt::print("Loading GLTF: {}\n", filePath);
 	// まずはgltfデータをメモリにロードする
 	fastgltf::Asset originalGltfData{};
@@ -101,16 +103,41 @@ std::optional<std::shared_ptr<RenderObjectData>> GetRenderObjectDataFromGltf(Vul
 	result->creator = engine;
 	RenderObjectData& resultRef = *result.get();
 
-	std::vector<DescriptorAllocatorGrowable::PoolSizeRatio> ratio =
-	{
-		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 3 },
-		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 3},
-		{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 3},
-	};
-	resultRef.descriptorPool.init(engine->_device, originalGltfData.materials.size(), ratio);
+	// 参照関係：
+	// ExtractMaterialData => Sampler, Image
+	// ExtractMeshData => Material
+	// UpdateNodeData => Node, Mesh
+	ExtractNodeData(resultRef, originalGltfData);
+	ExtractSamplerData(resultRef, originalGltfData);
+	ExtractImageData(resultRef, originalGltfData);
+	ExtractMaterialData(resultRef, originalGltfData);
+	ExtractMeshData(resultRef, originalGltfData);
 
-	ExtractSamplerData(resultRef, originalGltfData, engine);
+	UpdateNodeData(resultRef);
+	return result;
+}
 
+void UpdateNodeData(RenderObjectData& resultRef)
+{
+	VulkanEngine* engine = resultRef.creator;
+	for (auto i = 0; i < resultRef.nodes.size(); i++) {
+		auto& node = resultRef.nodes[i];
+		if (node->parent.lock() == nullptr) {
+			resultRef.topNodes.push_back(node);
+			node->refreshTransform(glm::mat4(1.f));
+		}
+		if (node->meshIndex != -1)
+		{
+			auto& mesh = resultRef.meshes[node->meshIndex];
+			mesh->meshBuffers = engine->uploadMesh(mesh->indices, mesh->vertices, mesh->jointMatrices);
+
+			static_cast<MeshNode*>(node.get())->mesh = resultRef.meshes[node->meshIndex];
+		}
+	}
+}
+
+void ExtractNodeData(RenderObjectData& resultRef, fastgltf::Asset& originalGltfData)
+{
 	for (fastgltf::Node& node : originalGltfData.nodes) {
 		std::shared_ptr<Node> newNode{};
 
@@ -142,6 +169,9 @@ std::optional<std::shared_ptr<RenderObjectData>> GetRenderObjectDataFromGltf(Vul
 		};
 		std::visit(visitors, node.transform);
 	}
+
+	// Nodeの親子関係解決。
+	// resultRef.nodesを参照する必要あるため、別ループで処理する
 	for (int i = 0; i < originalGltfData.nodes.size(); i++) {
 		std::shared_ptr<Node>& sceneNode = resultRef.nodes[i];
 		fastgltf::Node& node = originalGltfData.nodes[i];
@@ -151,33 +181,12 @@ std::optional<std::shared_ptr<RenderObjectData>> GetRenderObjectDataFromGltf(Vul
 			resultRef.nodes[c]->parent = sceneNode;
 		}
 	}
-
-	ExtractImageData(originalGltfData, engine, resultRef);
-
-	// 後でデータ充填しやすくために、マテリアルバッファの参照ビューを作る
-	ExtractMaterialData(resultRef, originalGltfData, engine);
-
-	ExtractMeshData(resultRef, originalGltfData);
-
-	for (auto i = 0; i < resultRef.nodes.size(); i++) {
-		auto& node = resultRef.nodes[i];
-		if (node->parent.lock() == nullptr) {
-			resultRef.topNodes.push_back(node);
-			node->refreshTransform(glm::mat4(1.f));
-		}
-		if (node->meshIndex != -1)
-		{
-			auto& mesh = resultRef.meshes[node->meshIndex];
-			mesh->meshBuffers = engine->uploadMesh(mesh->indices, mesh->vertices, mesh->jointMatrices);
-			
-			static_cast<MeshNode*>(node.get())->mesh = resultRef.meshes[node->meshIndex];
-		}
-	}
-	return result;
 }
 
-void ExtractImageData(RenderObjectData& resultRef, fastgltf::Asset& originalGltfData, VulkanEngine* engine)
+void ExtractImageData(RenderObjectData& resultRef, fastgltf::Asset& originalGltfData)
 {
+	VulkanEngine* engine = resultRef.creator;
+
 	// if there are no samplers defined, we need at least one default sampler which indicates as an error
 	for (fastgltf::Image& image : originalGltfData.images) {
 		std::optional<AllocatedImage> img = load_image(engine, originalGltfData, image);
@@ -191,8 +200,10 @@ void ExtractImageData(RenderObjectData& resultRef, fastgltf::Asset& originalGltf
 	}
 }
 
-void ExtractSamplerData(RenderObjectData& resultRef, fastgltf::Asset& originalGltfData, VulkanEngine* engine)
+void ExtractSamplerData(RenderObjectData& resultRef, fastgltf::Asset& originalGltfData)
 {
+	VulkanEngine* engine = resultRef.creator;
+
 	// convert the gltf samplers to VkSamplers which's format is compatible with vulkan
 	for (fastgltf::Sampler& sampler : originalGltfData.samplers) {
 		VkSamplerCreateInfo samplerInfo
@@ -331,12 +342,23 @@ void ExtractMeshData(RenderObjectData& resultRef, fastgltf::Asset& originalGltfD
 	}
 }
 
-void ExtractMaterialData(RenderObjectData& resultRef, fastgltf::Asset& gltf, VulkanEngine* engine)
+void ExtractMaterialData(RenderObjectData& resultRef, fastgltf::Asset& originalGltfData)
 {
+	VulkanEngine* engine = resultRef.creator;
+
+	// マテリアルConstantsバッファを確保するためのDescriptorPool作成
+	std::vector<DescriptorAllocatorGrowable::PoolSizeRatio> ratio =
+	{
+		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 3 },
+		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 3 },
+		{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 3 },
+	};
+	resultRef.descriptorPool.init(engine->_device, originalGltfData.materials.size(), ratio);
+
 	// まずはマテリアルConstants用のバッファ領域確保
 	size_t materialConstantsSize = sizeof(MaterialTemplate_PBR::MaterialConstants);
 	resultRef.materialDataBuffer = engine->create_buffer(
-		materialConstantsSize * gltf.materials.size(),
+		materialConstantsSize * originalGltfData.materials.size(),
 		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
 		VMA_MEMORY_USAGE_CPU_TO_GPU
 	);
@@ -344,12 +366,12 @@ void ExtractMaterialData(RenderObjectData& resultRef, fastgltf::Asset& gltf, Vul
 	// 書くマテリアルインスタンスにアクセスしやすくように、SpanでマテリアルConstantsバッファ用の参照ビュー生成
 	std::span<MaterialTemplate_PBR::MaterialConstants> sceneMaterialConstantsRef(
 		static_cast<MaterialTemplate_PBR::MaterialConstants*> (resultRef.materialDataBuffer.allocationInfo.pMappedData),
-		gltf.materials.size()
+		originalGltfData.materials.size()
 	);
 
 	// ここから各マテリアルインスタンス用のConstantsバッファデータ格納
-	for (size_t materialIndex = 0; materialIndex < gltf.materials.size(); materialIndex++) {
-		auto& gltfMaterialData = gltf.materials[materialIndex];
+	for (size_t materialIndex = 0; materialIndex < originalGltfData.materials.size(); materialIndex++) {
+		auto& gltfMaterialData = originalGltfData.materials[materialIndex];
 		std::shared_ptr<EngineMaterial> newMat = std::make_shared<EngineMaterial>();
 		resultRef.materials.push_back(newMat);
 		//resultRef.materials[gltfMaterialData.name.c_str()] = newMat;
@@ -386,8 +408,8 @@ void ExtractMaterialData(RenderObjectData& resultRef, fastgltf::Asset& gltf, Vul
 		// モデルデータにPBRマテリアルのベースカラーの情報が含まれる場合、それを適用する
 		if (gltfMaterialData.pbrData.baseColorTexture.has_value()) {
 			size_t textureIndex = gltfMaterialData.pbrData.baseColorTexture.value().textureIndex;
-			size_t imageIndex = gltf.textures[textureIndex].imageIndex.value();
-			size_t samplerIndex = gltf.textures[textureIndex].samplerIndex.value();
+			size_t imageIndex = originalGltfData.textures[textureIndex].imageIndex.value();
+			size_t samplerIndex = originalGltfData.textures[textureIndex].samplerIndex.value();
 			materialResources.colorImage = resultRef.images[imageIndex];
 			materialResources.colorSampler = resultRef.samplers[samplerIndex];
 		}
