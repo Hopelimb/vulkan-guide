@@ -19,6 +19,7 @@ std::optional<AllocatedImage> load_image(VulkanEngine* engine, fastgltf::Asset& 
 void create_image_from_data(unsigned char* data, int width, int height, AllocatedImage& newImage, VulkanEngine* engine);
 bool LoadGLTF(VulkanEngine* engine, std::string filePath, fastgltf::Asset& gltf);
 void ExtractMaterialData(RenderObjectData& resultRef, fastgltf::Asset& gltf, VulkanEngine* engine);
+void ExtractMeshData(RenderObjectData& resultRef, fastgltf::Asset& originalGltfData);
 
 std::optional<AllocatedImage> load_image(VulkanEngine* engine, fastgltf::Asset& asset, fastgltf::Image& image)
 {
@@ -181,9 +182,29 @@ std::optional<std::shared_ptr<RenderObjectData>> GetRenderObjectDataFromGltf(Vul
 	// 後でデータ充填しやすくために、マテリアルバッファの参照ビューを作る
 	ExtractMaterialData(resultRef, originalGltfData, engine);
 
+	ExtractMeshData(resultRef, originalGltfData);
+
+	for (auto i = 0; i < resultRef.nodes.size(); i++) {
+		auto& node = resultRef.nodes[i];
+		if (node->parent.lock() == nullptr) {
+			resultRef.topNodes.push_back(node);
+			node->refreshTransform(glm::mat4(1.f));
+		}
+		if (node->meshIndex != -1)
+		{
+			auto& mesh = resultRef.meshes[node->meshIndex];
+			mesh->meshBuffers = engine->uploadMesh(mesh->indices, mesh->vertices, mesh->jointMatrices);
+			
+			static_cast<MeshNode*>(node.get())->mesh = resultRef.meshes[node->meshIndex];
+		}
+	}
+	return result;
+}
+
+void ExtractMeshData(RenderObjectData& resultRef, fastgltf::Asset& originalGltfData)
+{
 	for (fastgltf::Mesh& mesh : originalGltfData.meshes) {
 		std::shared_ptr<MeshAsset> newMesh = std::make_shared<MeshAsset>();
-		resultRef.meshes.push_back(newMesh);
 		newMesh->name = mesh.name;
 		auto& vertices = newMesh->vertices;
 		auto& indices = newMesh->indices;
@@ -203,7 +224,7 @@ std::optional<std::shared_ptr<RenderObjectData>> GetRenderObjectDataFromGltf(Vul
 			};
 
 			size_t initial_vtx = vertices.size();
-			fastgltf::iterateAccessor<uint32_t>(originalGltfData, indexaccessor, 
+			fastgltf::iterateAccessor<uint32_t>(originalGltfData, indexaccessor,
 				[&](uint32_t idx) {
 					indices.push_back(idx + initial_vtx);
 				});
@@ -218,10 +239,10 @@ std::optional<std::shared_ptr<RenderObjectData>> GetRenderObjectDataFromGltf(Vul
 					Vertex newvtx{
 						.position = v,
 						.uv_x = 0,
-						.normal = {1,0,0},
+						.normal = { 1,0,0 },
 						.uv_y = 0,
-						.joints = glm::vec4{1.f},
-						.weights = glm::vec4{1.f},
+						.joints = glm::vec4{ 1.f },
+						.weights = glm::vec4{ 1.f },
 					};
 					vertices[initial_vtx + index] = newvtx;
 				});
@@ -250,6 +271,7 @@ std::optional<std::shared_ptr<RenderObjectData>> GetRenderObjectDataFromGltf(Vul
 			}
 #pragma endregion
 
+#pragma region Load Joints Info
 			auto jointAttribute = p.findAttribute("JOINTS_0");
 			if (jointAttribute != p.attributes.end()) {
 				fastgltf::iterateAccessorWithIndex<glm::vec4>(originalGltfData, originalGltfData.accessors[(*jointAttribute).second],
@@ -258,8 +280,9 @@ std::optional<std::shared_ptr<RenderObjectData>> GetRenderObjectDataFromGltf(Vul
 					}
 				);
 			}
+#pragma endregion
 
-#pragma region load color info
+#pragma region load Weights info
 			auto colorAttribute = p.findAttribute("WEIGHTS_0");
 			if (colorAttribute != p.attributes.end()) {
 				fastgltf::iterateAccessorWithIndex<glm::vec4>(originalGltfData, originalGltfData.accessors[(*colorAttribute).second],
@@ -271,6 +294,7 @@ std::optional<std::shared_ptr<RenderObjectData>> GetRenderObjectDataFromGltf(Vul
 #pragma endregion
 
 
+#pragma region load Geosurface Info
 
 			if (p.materialIndex.has_value()) {
 				newSurface.material = resultRef.materials[p.materialIndex.value()];
@@ -278,41 +302,26 @@ std::optional<std::shared_ptr<RenderObjectData>> GetRenderObjectDataFromGltf(Vul
 			else {
 				newSurface.material = resultRef.materials[0];
 			}
-
 			glm::vec3 minpos = vertices[initial_vtx].position;
 			glm::vec3 maxpos = vertices[initial_vtx].position;
 			for (size_t i = initial_vtx; i < vertices.size(); i++) {
 				minpos = glm::min(minpos, vertices[i].position);
 				maxpos = glm::max(maxpos, vertices[i].position);
 			}
-
 			newSurface.bounds.origin = (maxpos + minpos) / 2.f;
 			newSurface.bounds.extents = (maxpos - minpos) / 2.f;
 			newSurface.bounds.sphereRadius = glm::length(newSurface.bounds.extents);
-			 
 			newMesh->surfaces.push_back(newSurface);
-		}
-	}
+#pragma endregion
 
-	for (auto i = 0; i < resultRef.nodes.size(); i++) {
-		auto& node = resultRef.nodes[i];
-		if (node->parent.lock() == nullptr) {
-			resultRef.topNodes.push_back(node);
-			node->refreshTransform(glm::mat4(1.f));
-		}
-		if (node->meshIndex != -1)
-		{
-			auto& mesh = resultRef.meshes[node->meshIndex];
-			mesh->meshBuffers = engine->uploadMesh(mesh->indices, mesh->vertices, mesh->jointMatrices);
-			
-			static_cast<MeshNode*>(node.get())->mesh = resultRef.meshes[node->meshIndex];
+			resultRef.meshes.push_back(newMesh);
 		}
 	}
-	return result;
 }
 
 void ExtractMaterialData(RenderObjectData& resultRef, fastgltf::Asset& gltf, VulkanEngine* engine)
 {
+	// まずはマテリアルConstants用のバッファ領域確保
 	size_t materialConstantsSize = sizeof(MaterialTemplate_PBR::MaterialConstants);
 	resultRef.materialDataBuffer = engine->create_buffer(
 		materialConstantsSize * gltf.materials.size(),
@@ -320,11 +329,13 @@ void ExtractMaterialData(RenderObjectData& resultRef, fastgltf::Asset& gltf, Vul
 		VMA_MEMORY_USAGE_CPU_TO_GPU
 	);
 
+	// 書くマテリアルインスタンスにアクセスしやすくように、SpanでマテリアルConstantsバッファ用の参照ビュー生成
 	std::span<MaterialTemplate_PBR::MaterialConstants> sceneMaterialConstantsRef(
 		static_cast<MaterialTemplate_PBR::MaterialConstants*> (resultRef.materialDataBuffer.allocationInfo.pMappedData),
 		gltf.materials.size()
 	);
 
+	// ここから各マテリアルインスタンス用のConstantsバッファデータ格納
 	for (size_t materialIndex = 0; materialIndex < gltf.materials.size(); materialIndex++) {
 		auto& gltfMaterialData = gltf.materials[materialIndex];
 		std::shared_ptr<EngineMaterial> newMat = std::make_shared<EngineMaterial>();
