@@ -21,6 +21,7 @@ bool LoadGLTF(VulkanEngine* engine, std::string filePath, fastgltf::Asset& gltf)
 void ExtractMaterialData(RenderObjectData& resultRef, fastgltf::Asset& gltf, VulkanEngine* engine);
 void ExtractMeshData(RenderObjectData& resultRef, fastgltf::Asset& originalGltfData);
 void ExtractSamplerData(RenderObjectData& resultRef, fastgltf::Asset& originalGltfData, VulkanEngine* engine);
+void ExtractImageData(RenderObjectData& resultRef, fastgltf::Asset& originalGltfData, VulkanEngine* engine);
 
 std::optional<AllocatedImage> load_image(VulkanEngine* engine, fastgltf::Asset& asset, fastgltf::Image& image)
 {
@@ -151,17 +152,7 @@ std::optional<std::shared_ptr<RenderObjectData>> GetRenderObjectDataFromGltf(Vul
 		}
 	}
 
-	// if there are no samplers defined, we need at least one default sampler which indicates as an error
-	for (fastgltf::Image& image : originalGltfData.images) {
-		std::optional<AllocatedImage> img = load_image(engine, originalGltfData, image);
-		if (img.has_value()) {
-			resultRef.images.push_back(*img);
-		}
-		else {
-			resultRef.images.push_back(engine->_errorCheckerboardImage);
-			fmt::print("Failed to load image: {}\n", image.name);
-		}
-	}
+	ExtractImageData(originalGltfData, engine, resultRef);
 
 	// 後でデータ充填しやすくために、マテリアルバッファの参照ビューを作る
 	ExtractMaterialData(resultRef, originalGltfData, engine);
@@ -183,6 +174,21 @@ std::optional<std::shared_ptr<RenderObjectData>> GetRenderObjectDataFromGltf(Vul
 		}
 	}
 	return result;
+}
+
+void ExtractImageData(RenderObjectData& resultRef, fastgltf::Asset& originalGltfData, VulkanEngine* engine)
+{
+	// if there are no samplers defined, we need at least one default sampler which indicates as an error
+	for (fastgltf::Image& image : originalGltfData.images) {
+		std::optional<AllocatedImage> img = load_image(engine, originalGltfData, image);
+		if (img.has_value()) {
+			resultRef.images.push_back(*img);
+		}
+		else {
+			resultRef.images.push_back(engine->_errorCheckerboardImage);
+			fmt::print("Failed to load image: {}\n", image.name);
+		}
+	}
 }
 
 void ExtractSamplerData(RenderObjectData& resultRef, fastgltf::Asset& originalGltfData, VulkanEngine* engine)
