@@ -30,7 +30,7 @@ const char* PATH_SHADER_FRAG_MESH = "../../shaders/mesh.frag.spv";
 const char* PATH_SHADER_VERT_MESH = "../../shaders/mesh.vert.spv";
 
 const char* PATH_MESH_MONKEY = "../../assets/basicmesh.glb";
-const char* PATH_MESH_STRUCTURE = "../../assets/CubeSandbox.glb";
+const char* PATH_MESH_STRUCTURE = "../../assets/structure.glb";
 
 VulkanEngine& VulkanEngine::Get() { return *loadedEngine; }
 
@@ -1378,8 +1378,8 @@ void MaterialTemplate_PBR::build_pipelines(VulkanEngine* engine)
     opaquePipeline.pipeline = pipelineBuilder.build_pipeline(engine->_device);
 
     pipelineBuilder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
-    pipelineBuilder.enable_blending_alpha();
-    //pipelineBuilder.enable_blending_additive();
+    //pipelineBuilder.enable_blending_alpha();
+    pipelineBuilder.enable_blending_additive();
     pipelineBuilder.enable_depthtest(false, VK_COMPARE_OP_GREATER_OR_EQUAL);
     transparentPipeline.pipeline = pipelineBuilder.build_pipeline(engine->_device);
 

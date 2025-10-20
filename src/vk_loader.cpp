@@ -82,7 +82,7 @@ void create_image_from_data(unsigned char* data, int width, int height, Allocate
 			.depth = static_cast<uint32_t>(1),
 		};
 
-		newImage = engine->create_image(data, imagesize, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT, true);
+		newImage = engine->create_image(data, imagesize, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT, false);
 		stbi_image_free(data);
 	}
 }
@@ -129,8 +129,6 @@ void UpdateNodeData(RenderObjectData& resultRef)
 		if (node->meshIndex != -1)
 		{
 			auto& mesh = resultRef.meshes[node->meshIndex];
-			mesh->meshBuffers = engine->uploadMesh(mesh->indices, mesh->vertices, mesh->jointMatrices);
-
 			static_cast<MeshNode*>(node.get())->mesh = resultRef.meshes[node->meshIndex];
 		}
 	}
@@ -226,6 +224,8 @@ void ExtractSamplerData(RenderObjectData& resultRef, fastgltf::Asset& originalGl
 
 void ExtractMeshData(RenderObjectData& resultRef, fastgltf::Asset& originalGltfData)
 {
+	VulkanEngine* engine = resultRef.creator;
+
 	for (fastgltf::Mesh& mesh : originalGltfData.meshes) {
 		std::shared_ptr<MeshAsset> newMesh = std::make_shared<MeshAsset>();
 		newMesh->name = mesh.name;
@@ -337,8 +337,9 @@ void ExtractMeshData(RenderObjectData& resultRef, fastgltf::Asset& originalGltfD
 			newMesh->surfaces.push_back(newSurface);
 #pragma endregion
 
-			resultRef.meshes.push_back(newMesh);
 		}
+		newMesh->meshBuffers = engine->uploadMesh(newMesh->indices, newMesh->vertices, newMesh->jointMatrices);
+		resultRef.meshes.push_back(newMesh);
 	}
 }
 
@@ -349,7 +350,7 @@ void ExtractMaterialData(RenderObjectData& resultRef, fastgltf::Asset& originalG
 	// マテリアルConstantsバッファを確保するためのDescriptorPool作成
 	std::vector<DescriptorAllocatorGrowable::PoolSizeRatio> ratio =
 	{
-		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 3 },
+		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 6 },
 		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 3 },
 		{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 3 },
 	};
