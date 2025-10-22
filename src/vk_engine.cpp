@@ -30,7 +30,7 @@ const char* PATH_SHADER_FRAG_MESH = "../../shaders/mesh.frag.spv";
 const char* PATH_SHADER_VERT_MESH = "../../shaders/mesh.vert.spv";
 
 const char* PATH_MESH_MONKEY = "../../assets/basicmesh.glb";
-const char* PATH_MESH_STRUCTURE = "../../assets/structure.glb";
+const char* PATH_MESH_STRUCTURE = "../../assets/MikuSP.glb";
 
 VulkanEngine& VulkanEngine::Get() { return *loadedEngine; }
 
@@ -344,29 +344,6 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmdBuffer)
         }
     });
 
-    //std::vector<uint32_t> transparent_draw_indices;
-    //transparent_draw_indices.reserve(mainDrawContext.TransparentSurfaces.size());
-
-    //for (uint32_t i = 0; i < mainDrawContext.TransparentSurfaces.size(); i++) {
-    //    if (is_visible(mainDrawContext.TransparentSurfaces[i], sceneData.viewproj))
-    //    {
-    //        transparent_draw_indices.push_back(i);
-    //    }
-    //}
-
-    //// sort the opaque surfacrs by material and mesh
-    //std::sort(transparent_draw_indices.begin(), transparent_draw_indices.end(), [&](const auto& iA, const auto& iB) {
-    //    const RenderObject& A = mainDrawContext.TransparentSurfaces[iA];
-    //    const RenderObject& B = mainDrawContext.TransparentSurfaces[iB];
-
-    //    if (A.material == B.material) {
-    //        return A.indexBuffer >= B.indexBuffer;
-    //    }
-    //    else {
-    //        return A.material >= B.material;
-    //    }
-    //    });
-
     stats.drawcall_count = 0;
     stats.triangle_count = 0;
 	auto start = std::chrono::high_resolution_clock::now();
@@ -450,7 +427,7 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmdBuffer)
         GPUDrawPushConstants push_constants{};
         push_constants.worldMatrix = renderObject.transform;
         push_constants.vertexBuffer = renderObject.vertexBufferAddress;
-        push_constants.jointMatrixBuffer = renderObject.jointMatrixBufferAddress;
+        push_constants.jointMatrixBuffer = renderObject.ibmBufferAddress;
         vkCmdPushConstants(cmdBuffer, renderObject.material->materialPipeline->layout,
             VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &push_constants);
 
@@ -1245,11 +1222,11 @@ void VulkanEngine::destroy_image(const AllocatedImage& image)
     vmaDestroyImage(_allocator, image.image, image.allocation);
 }
 
-GPUMeshBuffers VulkanEngine::uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices, std::span<glm::mat4> nodeMatrices)
+
+GPUMeshBuffers VulkanEngine::uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices)
 {
 	const size_t vertexBufferSize = vertices.size() * sizeof(Vertex);
 	const size_t indexBufferSize = indices.size() * sizeof(uint32_t);
-    const size_t nodeMatricesSize = nodeMatrices.size() * sizeof(glm::mat4);
 
     GPUMeshBuffers newSurface{};
 
@@ -1263,18 +1240,6 @@ GPUMeshBuffers VulkanEngine::uploadMesh(std::span<uint32_t> indices, std::span<V
     };
 	newSurface.vertexBufferAddress = vkGetBufferDeviceAddress(_device, &deviceAddressInfo);
 
-
-    newSurface.jointMatrixBuffer = create_buffer(
-        nodeMatricesSize, 
-        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-        VMA_MEMORY_USAGE_CPU_TO_GPU
-    );
-    VkBufferDeviceAddressInfo nodeMatrixBufferAddressInfo{
-        .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
-        .buffer = newSurface.jointMatrixBuffer.buffer,
-    };
-    newSurface.jointMatrixBufferAddress = vkGetBufferDeviceAddress(_device, &nodeMatrixBufferAddressInfo);
-
     newSurface.indexBuffer = create_buffer(
         indexBufferSize,
         VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
@@ -1282,16 +1247,15 @@ GPUMeshBuffers VulkanEngine::uploadMesh(std::span<uint32_t> indices, std::span<V
     );
 
     AllocatedBuffer staging = create_buffer(
-        vertexBufferSize + indexBufferSize + nodeMatricesSize,
+        vertexBufferSize + indexBufferSize,
         VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
         VMA_MEMORY_USAGE_CPU_ONLY
     );
 
-    void* data = staging.allocation->GetMappedData();
+    void* dataaddr = staging.allocation->GetMappedData();
 
-	memcpy((uint8_t*)data, vertices.data(), vertexBufferSize);
-	memcpy((uint8_t*)data + vertexBufferSize, indices.data(), indexBufferSize);
-    memcpy((uint8_t*)data + vertexBufferSize + indexBufferSize, nodeMatrices.data(), nodeMatricesSize);
+	memcpy((uint8_t*)dataaddr, vertices.data(), vertexBufferSize);
+	memcpy((uint8_t*)dataaddr + vertexBufferSize, indices.data(), indexBufferSize);
 
     immediate_submit([&](VkCommandBuffer cmd) {
         VkBufferCopy vertexCopy{
@@ -1306,17 +1270,52 @@ GPUMeshBuffers VulkanEngine::uploadMesh(std::span<uint32_t> indices, std::span<V
             .size = indexBufferSize,
         };
         vkCmdCopyBuffer(cmd, staging.buffer, newSurface.indexBuffer.buffer, 1, &indexCopy);
-        VkBufferCopy nodeMatrixCopy{
-            .srcOffset = vertexBufferSize + indexBufferSize,
-            .dstOffset = 0,
-            .size = nodeMatricesSize,
-        };
-        vkCmdCopyBuffer(cmd, staging.buffer, newSurface.jointMatrixBuffer.buffer, 1, &nodeMatrixCopy);
     });
 
     destroy_buffer(staging);
 
 	return newSurface;
+}
+
+GPUSkinBuffers VulkanEngine::uploadSkin(std::span<glm::mat4> inverseBindMatrices)
+{
+    const size_t ibmBufferSize = inverseBindMatrices.size() * sizeof(glm::mat4);
+
+    GPUSkinBuffers newSkin{};
+
+	newSkin.ibmBuffer = create_buffer(
+		ibmBufferSize,
+		VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+		VMA_MEMORY_USAGE_GPU_ONLY
+	);
+
+    AllocatedBuffer staging = create_buffer(
+        ibmBufferSize,
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        VMA_MEMORY_USAGE_CPU_ONLY
+    );
+
+    void* dataaddr = staging.allocation->GetMappedData();
+    memcpy((uint8_t*)dataaddr, inverseBindMatrices.data(), ibmBufferSize);
+
+    VkBufferDeviceAddressInfo deviceAddressInfo{
+        .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+        .buffer = newSkin.ibmBuffer.buffer,
+    };
+    newSkin.ibmBufferAddress = vkGetBufferDeviceAddress(_device, &deviceAddressInfo);
+
+    immediate_submit([&](VkCommandBuffer cmd) {
+        VkBufferCopy ibmCopy{
+            .srcOffset = 0,
+            .dstOffset = 0,
+            .size = ibmBufferSize,
+        };
+        vkCmdCopyBuffer(cmd, staging.buffer, newSkin.ibmBuffer.buffer, 1, &ibmCopy);
+        });
+
+	destroy_buffer(staging);
+
+    return newSkin;
 }
 
 void MaterialTemplate_PBR::build_pipelines(VulkanEngine* engine)
@@ -1378,8 +1377,8 @@ void MaterialTemplate_PBR::build_pipelines(VulkanEngine* engine)
     opaquePipeline.pipeline = pipelineBuilder.build_pipeline(engine->_device);
 
     pipelineBuilder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
-    //pipelineBuilder.enable_blending_alpha();
-    pipelineBuilder.enable_blending_additive();
+    pipelineBuilder.enable_blending_alpha();
+    //pipelineBuilder.enable_blending_additive();
     pipelineBuilder.enable_depthtest(false, VK_COMPARE_OP_GREATER_OR_EQUAL);
     transparentPipeline.pipeline = pipelineBuilder.build_pipeline(engine->_device);
 
@@ -1429,7 +1428,7 @@ MaterialInstance MaterialTemplate_PBR::createMaterialInstance(VkDevice device, M
     return matData;
 }
 
-void MeshNode::Draw(const glm::mat4& topMatrix, DrawContext& ctx)
+void RenderNode::Draw(const glm::mat4& topMatrix, DrawContext& ctx)
 {
     glm::mat4 nodeMatrix = topMatrix * worldTransform;
     for (auto& s : mesh->surfaces) {
@@ -1441,7 +1440,6 @@ void MeshNode::Draw(const glm::mat4& topMatrix, DrawContext& ctx)
         def.bounds = s.bounds;
         def.transform = nodeMatrix;
         def.vertexBufferAddress = mesh->meshBuffers.vertexBufferAddress;
-        def.jointMatrixBufferAddress = mesh->meshBuffers.jointMatrixBufferAddress;
         if (s.material->data.passType == MaterialPass::Transparent) {
             ctx.TransparentSurfaces.push_back(def);
         }

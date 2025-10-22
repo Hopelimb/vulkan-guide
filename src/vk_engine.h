@@ -200,9 +200,10 @@ public:
 	}
 };
 
-struct MeshNode : public Node {
+struct RenderNode : public Node {
 
 	std::shared_ptr<MeshAsset> mesh;
+	std::shared_ptr<SkinAsset> skin;
 
 	virtual void Draw(const glm::mat4& topMatrix, DrawContext& ctx) override;
 };
@@ -217,7 +218,7 @@ struct RenderObject {
 	Bounds bounds;
 	glm::mat4 transform;
 	VkDeviceAddress vertexBufferAddress{ 0 };
-	VkDeviceAddress jointMatrixBufferAddress{0};
+	VkDeviceAddress ibmBufferAddress{0};
 };
 
 struct DrawContext {
@@ -326,13 +327,15 @@ public:
 
 	//run main loop
 	void run();
-	GPUMeshBuffers uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices, std::span<glm::mat4> nodeMatrices);
+	GPUMeshBuffers uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
+	GPUSkinBuffers uploadSkin(std::span<glm::mat4> inverseBindMatrices);
 	AllocatedBuffer create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
 	AllocatedImage create_image(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
 	AllocatedImage create_image(void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
 	void destroy_image(const AllocatedImage& image);
 	void destroy_buffer(const AllocatedBuffer& buffer);
 	void resize_swapchain();
+	void immediate_submit(std::function<void(VkCommandBuffer cmd)>&& function);
 
 private:
 	void init_vulkan();
@@ -348,7 +351,6 @@ private:
 	void create_swapchain(uint32_t width, uint32_t height);
 	void destroy_swapchain();
 
-	void immediate_submit(std::function<void(VkCommandBuffer cmd)>&& function);
 	void init_imgui();
 
 	void draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView);

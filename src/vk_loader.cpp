@@ -20,6 +20,7 @@ void create_image_from_data(unsigned char* data, int width, int height, Allocate
 bool LoadGLTF(VulkanEngine* engine, std::string filePath, fastgltf::Asset& gltf);
 void ExtractMaterialData(RenderObjectData& resultRef, fastgltf::Asset& originalGltfData);
 void ExtractMeshData(RenderObjectData& resultRef, fastgltf::Asset& originalGltfData);
+void ExtractSkinData(RenderObjectData& resultRef, fastgltf::Asset& originalGltfData);
 void ExtractSamplerData(RenderObjectData& resultRef, fastgltf::Asset& originalGltfData);
 void ExtractImageData(RenderObjectData& resultRef, fastgltf::Asset& originalGltfData);
 void ExtractNodeData(RenderObjectData& resultRef, fastgltf::Asset& originalGltfData);
@@ -112,7 +113,7 @@ std::optional<std::shared_ptr<RenderObjectData>> CreateRenderObjectDataFromGltf(
 	ExtractImageData(resultRef, originalGltfData);
 	ExtractMaterialData(resultRef, originalGltfData);
 	ExtractMeshData(resultRef, originalGltfData);
-
+	ExtractSkinData(resultRef, originalGltfData);
 	UpdateNodeData(resultRef);
 	return result;
 }
@@ -129,7 +130,12 @@ void UpdateNodeData(RenderObjectData& resultRef)
 		if (node->meshIndex != -1)
 		{
 			auto& mesh = resultRef.meshes[node->meshIndex];
-			static_cast<MeshNode*>(node.get())->mesh = resultRef.meshes[node->meshIndex];
+			static_cast<RenderNode*>(node.get())->mesh = resultRef.meshes[node->meshIndex];
+		}
+		if (node->skinIndex != -1)
+		{
+			auto& skin = resultRef.skins[node->skinIndex];
+			static_cast<RenderNode*>(node.get())->skin = resultRef.skins[node->skinIndex];;
 		}
 	}
 }
@@ -140,11 +146,15 @@ void ExtractNodeData(RenderObjectData& resultRef, fastgltf::Asset& originalGltfD
 		std::shared_ptr<Node> newNode{};
 
 		if (node.meshIndex.has_value()) {
-			newNode = std::make_shared<MeshNode>();
+			newNode = std::make_shared<RenderNode>();
 			newNode->meshIndex = *node.meshIndex;
 		}
 		else {
 			newNode = std::make_shared<Node>();
+		}
+
+		if (node.skinIndex.has_value()) {
+			newNode->skinIndex = *node.skinIndex;
 		}
 
 		resultRef.nodes.push_back(newNode);
@@ -221,7 +231,39 @@ void ExtractSamplerData(RenderObjectData& resultRef, fastgltf::Asset& originalGl
 		resultRef.samplers.push_back(newSampler);
 	}
 }
+void ExtractSkinData(RenderObjectData& resultRef, fastgltf::Asset& originalGltfData)
+{
+	VulkanEngine* engine = resultRef.creator;
+	// create skin inverse bind matrix buffers
+	//resultRef.skinImbBuffers.clear();
+	//resultRef.skinImbBuffers.resize(originalGltfData.skins.size());
+	//resultRef.skins.resize(originalGltfData.skins.size());
+	for (auto& skin : originalGltfData.skins)
+	{
+		std::shared_ptr<SkinAsset> skinAsset = std::make_shared<SkinAsset>();
+		auto worldTransforms = std::vector<glm::mat4>{};
+		if (skin.inverseBindMatrices.has_value() && skin.joints.size() > 0) {
+			fastgltf::Accessor& ibmAccessor = originalGltfData.accessors[*skin.inverseBindMatrices];
+			size_t jointCount = skin.joints.size();
+			worldTransforms.resize(jointCount);
+			fastgltf::iterateAccessorWithIndex<glm::mat4>(originalGltfData, ibmAccessor,
+				[&](glm::mat4 mat, size_t index) {
+					worldTransforms[index] = glm::inverse(mat);
+				}
+			);
+		}
 
+		skinAsset->skinBuffers = engine->uploadSkin(worldTransforms);
+
+		for (auto jointIndex : skin.joints) {
+			skinAsset->joints.push_back(resultRef.nodes[jointIndex]);
+		}
+		for (size_t i = 0; i < skin.joints.size(); i++) {
+			skinAsset->jointIndexMap[skin.joints[i]] = static_cast<uint32_t>(i);
+		}
+		resultRef.skins.push_back(skinAsset);
+	}
+}
 void ExtractMeshData(RenderObjectData& resultRef, fastgltf::Asset& originalGltfData)
 {
 	VulkanEngine* engine = resultRef.creator;
@@ -231,12 +273,12 @@ void ExtractMeshData(RenderObjectData& resultRef, fastgltf::Asset& originalGltfD
 		newMesh->name = mesh.name;
 		auto& vertices = newMesh->vertices;
 		auto& indices = newMesh->indices;
-		auto& worldTransforms = newMesh->jointMatrices;
+		//auto& worldTransforms = newMesh->jointMatrices;
 
 		indices.clear();
 		vertices.clear();
-		worldTransforms.clear();
-		worldTransforms.push_back(glm::mat4(1.f));
+		//worldTransforms.clear();
+		//worldTransforms.push_back(glm::mat4(1.f));
 
 		for (auto& p : mesh.primitives) {
 #pragma region load indeces info
@@ -338,7 +380,8 @@ void ExtractMeshData(RenderObjectData& resultRef, fastgltf::Asset& originalGltfD
 #pragma endregion
 
 		}
-		newMesh->meshBuffers = engine->uploadMesh(newMesh->indices, newMesh->vertices, newMesh->jointMatrices);
+
+		newMesh->meshBuffers = engine->uploadMesh(newMesh->indices, newMesh->vertices);
 		resultRef.meshes.push_back(newMesh);
 	}
 }
@@ -477,7 +520,10 @@ void RenderObjectData::clearAll()
 	for (auto& v: meshes) {
 		creator->destroy_buffer(v->meshBuffers.indexBuffer);
 		creator->destroy_buffer(v->meshBuffers.vertexBuffer);
-		creator->destroy_buffer(v->meshBuffers.jointMatrixBuffer);
+	}
+
+	for (auto& v : skins) {
+		creator->destroy_buffer(v->skinBuffers.ibmBuffer);
 	}
 
 	for (auto& v: images) {

@@ -35,9 +35,15 @@ struct MeshAsset {
 	std::string name;
 	std::vector<uint32_t> indices;
 	std::vector<Vertex> vertices;
-	std::vector<glm::mat4> jointMatrices;
 	std::vector<GeoSurface> surfaces;
 	GPUMeshBuffers meshBuffers;
+};
+
+struct SkinAsset {
+	std::string name;
+	std::vector<std::shared_ptr<Node>> joints;
+	std::unordered_map<uint32_t, uint32_t> jointIndexMap;
+	GPUSkinBuffers skinBuffers;
 };
 
 class VulkanEngine;
@@ -48,6 +54,7 @@ struct RenderObjectData : public IRenderable{
 	std::vector<VkSampler> samplers;
 	std::vector<AllocatedImage> images;
 	std::vector<std::shared_ptr<MeshAsset>> meshes;
+	std::vector<std::shared_ptr<SkinAsset>> skins;
 	std::vector<std::shared_ptr<Node>> nodes;
 	std::vector<std::shared_ptr<Node>> topNodes;
 	std::vector<std::shared_ptr<EngineMaterial>> materials;
