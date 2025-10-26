@@ -461,6 +461,8 @@ void VulkanEngine::update_scene()
     mainDrawContext.TransparentSurfaces.clear();
     glm::mat4 scale = glm::scale(glm::vec3{ 1 });
     glm::mat4 translation = glm::translate(glm::vec3{ 0, -0.8, -0.5 });
+
+	loadedScenes["structure"]->update_skin_matrices();
     loadedScenes["structure"]->Draw(glm::mat4(1.f), mainDrawContext);
     //loadedNodes["Suzanne"]->Draw(glm::mat4{1.f}, mainDrawContext);
     //for (int x = -3; x < 3; x++) {
@@ -1216,6 +1218,21 @@ AllocatedImage VulkanEngine::create_image(void* data, VkExtent3D size, VkFormat 
     return newImage;
 }
 
+void VulkanEngine::copy_buffer(const AllocatedBuffer& stagingBuffer, const AllocatedBuffer& targetBuffer, std::vector<glm::mat4> matrices)
+{
+    void* dataaddr = stagingBuffer.allocation->GetMappedData();
+    size_t ibmBufferSize = matrices.size() * sizeof(glm::mat4);
+    memcpy((uint8_t*)dataaddr, matrices.data(), ibmBufferSize);
+	immediate_submit([&](VkCommandBuffer cmd) {
+		VkBufferCopy copyRegion{
+			.srcOffset = 0,
+			.dstOffset = 0,
+			.size = ibmBufferSize,
+		};
+		vkCmdCopyBuffer(cmd, stagingBuffer.buffer, targetBuffer.buffer, 1, &copyRegion);
+		});
+}
+
 void VulkanEngine::destroy_image(const AllocatedImage& image)
 {
     vkDestroyImageView(_device, image.imageView, nullptr);
@@ -1277,9 +1294,9 @@ GPUMeshBuffers VulkanEngine::uploadMesh(std::span<uint32_t> indices, std::span<V
 	return newSurface;
 }
 
-GPUSkinBuffers VulkanEngine::uploadSkin(std::span<glm::mat4> inverseBindMatrices)
+GPUSkinBuffers VulkanEngine::uploadSkin(size_t ibmBufferSize)
 {
-    const size_t ibmBufferSize = inverseBindMatrices.size() * sizeof(glm::mat4);
+    //const size_t ibmBufferSize = inverseBindMatrices.size() * sizeof(glm::mat4);
 
     GPUSkinBuffers newSkin{};
 
@@ -1289,14 +1306,14 @@ GPUSkinBuffers VulkanEngine::uploadSkin(std::span<glm::mat4> inverseBindMatrices
 		VMA_MEMORY_USAGE_GPU_ONLY
 	);
 
-    AllocatedBuffer staging = create_buffer(
+    newSkin.stagingBuffer = create_buffer(
         ibmBufferSize,
         VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
         VMA_MEMORY_USAGE_CPU_ONLY
     );
 
-    void* dataaddr = staging.allocation->GetMappedData();
-    memcpy((uint8_t*)dataaddr, inverseBindMatrices.data(), ibmBufferSize);
+    //void* dataaddr = newSkin.stagingBuffer.allocation->GetMappedData();
+    //memcpy((uint8_t*)dataaddr, inverseBindMatrices.data(), ibmBufferSize);
 
     VkBufferDeviceAddressInfo deviceAddressInfo{
         .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
@@ -1304,17 +1321,14 @@ GPUSkinBuffers VulkanEngine::uploadSkin(std::span<glm::mat4> inverseBindMatrices
     };
     newSkin.ibmBufferAddress = vkGetBufferDeviceAddress(_device, &deviceAddressInfo);
 
-    immediate_submit([&](VkCommandBuffer cmd) {
-        VkBufferCopy ibmCopy{
-            .srcOffset = 0,
-            .dstOffset = 0,
-            .size = ibmBufferSize,
-        };
-        vkCmdCopyBuffer(cmd, staging.buffer, newSkin.ibmBuffer.buffer, 1, &ibmCopy);
-        });
-
-	destroy_buffer(staging);
-
+    //immediate_submit([&](VkCommandBuffer cmd) {
+    //    VkBufferCopy ibmCopy{
+    //        .srcOffset = 0,
+    //        .dstOffset = 0,
+    //        .size = ibmBufferSize,
+    //    };
+    //    vkCmdCopyBuffer(cmd, newSkin.stagingBuffer.buffer, newSkin.ibmBuffer.buffer, 1, &ibmCopy);
+    //    });
     return newSkin;
 }
 
@@ -1438,8 +1452,9 @@ void RenderNode::Draw(const glm::mat4& topMatrix, DrawContext& ctx)
         def.indexBuffer = mesh->meshBuffers.indexBuffer.buffer;
         def.material = &s.material->data;
         def.bounds = s.bounds;
-        def.transform = nodeMatrix;
+        def.transform = glm::mat4(0);
         def.vertexBufferAddress = mesh->meshBuffers.vertexBufferAddress;
+		def.ibmBufferAddress = skin->skinBuffers.ibmBufferAddress;
         if (s.material->data.passType == MaterialPass::Transparent) {
             ctx.TransparentSurfaces.push_back(def);
         }

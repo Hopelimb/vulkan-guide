@@ -125,7 +125,6 @@ void UpdateNodeData(RenderObjectData& resultRef)
 		auto& node = resultRef.nodes[i];
 		if (node->parent.lock() == nullptr) {
 			resultRef.topNodes.push_back(node);
-			node->refreshTransform(glm::mat4(1.f));
 		}
 		if (node->meshIndex != -1)
 		{
@@ -241,27 +240,40 @@ void ExtractSkinData(RenderObjectData& resultRef, fastgltf::Asset& originalGltfD
 	for (auto& skin : originalGltfData.skins)
 	{
 		std::shared_ptr<SkinAsset> skinAsset = std::make_shared<SkinAsset>();
-		auto worldTransforms = std::vector<glm::mat4>{};
+
+		for (auto nodeIndex : skin.joints) {
+			auto& node = resultRef.nodes[nodeIndex];
+			skinAsset->jointNodes.push_back(node);
+		}
+
 		if (skin.inverseBindMatrices.has_value() && skin.joints.size() > 0) {
 			fastgltf::Accessor& ibmAccessor = originalGltfData.accessors[*skin.inverseBindMatrices];
 			size_t jointCount = skin.joints.size();
-			worldTransforms.resize(jointCount);
+			skinAsset->inverseBindMatrices.resize(jointCount);
 			fastgltf::iterateAccessorWithIndex<glm::mat4>(originalGltfData, ibmAccessor,
 				[&](glm::mat4 mat, size_t index) {
-					worldTransforms[index] = glm::inverse(mat);
+
+					skinAsset->inverseBindMatrices[index] = mat;
 				}
 			);
 		}
 
-		skinAsset->skinBuffers = engine->uploadSkin(worldTransforms);
 
-		for (auto jointIndex : skin.joints) {
-			skinAsset->joints.push_back(resultRef.nodes[jointIndex]);
-		}
-		for (size_t i = 0; i < skin.joints.size(); i++) {
-			skinAsset->jointIndexMap[skin.joints[i]] = static_cast<uint32_t>(i);
-		}
+		//for (uint32_t jointIndex = 0; jointIndex < skin.joints.size(); jointIndex++) {
+		//	uint32_t nodeIndex = skin.joints[jointIndex];
+		//	skinAsset->jointIndexMap[nodeIndex] = jointIndex;
+		//}
 		resultRef.skins.push_back(skinAsset);
+
+
+	}
+
+	for (auto& p_skin : resultRef.skins) {
+		auto& skin = *p_skin;
+		skin.finalMatrices.resize(skin.jointNodes.size());
+
+		size_t bufferSize = skin.finalMatrices.size() * sizeof(glm::mat4);
+		skin.skinBuffers = engine->uploadSkin(bufferSize);
 	}
 }
 void ExtractMeshData(RenderObjectData& resultRef, fastgltf::Asset& originalGltfData)
@@ -306,7 +318,7 @@ void ExtractMeshData(RenderObjectData& resultRef, fastgltf::Asset& originalGltfD
 						.uv_x = 0,
 						.normal = { 1,0,0 },
 						.uv_y = 0,
-						.joints = glm::vec4{ 1.f },
+						.joints = glm::uvec4{ 0 },
 						.weights = glm::vec4{ 1.f },
 					};
 					vertices[initial_vtx + index] = newvtx;
@@ -340,7 +352,7 @@ void ExtractMeshData(RenderObjectData& resultRef, fastgltf::Asset& originalGltfD
 			auto jointAttribute = p.findAttribute("JOINTS_0");
 			if (jointAttribute != p.attributes.end()) {
 				fastgltf::iterateAccessorWithIndex<glm::vec4>(originalGltfData, originalGltfData.accessors[(*jointAttribute).second],
-					[&](glm::vec4 joints, size_t index) {
+					[&](glm::uvec4 joints, size_t index) {
 						vertices[initial_vtx + index].joints = joints;
 					}
 				);
@@ -505,8 +517,25 @@ bool LoadGLTF(VulkanEngine* engine, std::string filePath, fastgltf::Asset& gltf)
 	return true;
 }
 
+void RenderObjectData::update_skin_matrices()
+{
+	VulkanEngine* engine = creator;
+	for (auto& skin : skins) {
+		if (skin != nullptr) {
+			for (size_t i = 0; i < skin->jointNodes.size(); i++) {
+				glm::mat4 jointMatrix = skin->jointNodes[i]->worldTransform;
+				glm::mat4 ibm = skin->inverseBindMatrices[i];
+				skin->finalMatrices[i] = ibm * jointMatrix;
+			}
+
+			engine->copy_buffer(skin->skinBuffers.stagingBuffer, skin->skinBuffers.ibmBuffer, skin->finalMatrices);
+		}
+	}
+}
+
 void RenderObjectData::Draw(const glm::mat4& topMatrix, DrawContext& ctx) {
 	for (auto& n : topNodes) {
+		n->refreshTransform(topMatrix);
 		n->Draw(topMatrix, ctx);
 	}
 }
@@ -524,6 +553,7 @@ void RenderObjectData::clearAll()
 
 	for (auto& v : skins) {
 		creator->destroy_buffer(v->skinBuffers.ibmBuffer);
+		creator->destroy_buffer(v->skinBuffers.stagingBuffer);
 	}
 
 	for (auto& v: images) {

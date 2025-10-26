@@ -56,6 +56,7 @@ struct GPUMeshBuffers {
 
 struct GPUSkinBuffers {
     AllocatedBuffer ibmBuffer;
+    AllocatedBuffer stagingBuffer;
     VkDeviceAddress ibmBufferAddress;
 };
 

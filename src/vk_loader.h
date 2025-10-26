@@ -14,7 +14,7 @@ struct Vertex {
 	float uv_x;
 	glm::vec3 normal;
 	float uv_y;
-	glm::vec4 joints;
+	glm::uvec4 joints;
 	glm::vec4 weights;
 };
 
@@ -41,8 +41,10 @@ struct MeshAsset {
 
 struct SkinAsset {
 	std::string name;
-	std::vector<std::shared_ptr<Node>> joints;
-	std::unordered_map<uint32_t, uint32_t> jointIndexMap;
+	std::vector<std::shared_ptr<Node>> jointNodes;
+	std::vector<glm::mat4> inverseBindMatrices;
+	std::vector<glm::mat4> finalMatrices;
+	//std::unordered_map<uint32_t, uint32_t> jointIndexMap;
 	GPUSkinBuffers skinBuffers;
 };
 
@@ -61,6 +63,7 @@ struct RenderObjectData : public IRenderable{
 	AllocatedBuffer materialDataBuffer;
 	~RenderObjectData() { clearAll(); };
 
+	void update_skin_matrices();
 	virtual void Draw(const glm::mat4& topMatrix, DrawContext& ctx);
 
 private:

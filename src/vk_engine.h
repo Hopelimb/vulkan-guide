@@ -328,10 +328,11 @@ public:
 	//run main loop
 	void run();
 	GPUMeshBuffers uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
-	GPUSkinBuffers uploadSkin(std::span<glm::mat4> inverseBindMatrices);
+	GPUSkinBuffers uploadSkin(size_t ibmBufferSize);
 	AllocatedBuffer create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
 	AllocatedImage create_image(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
 	AllocatedImage create_image(void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
+	void copy_buffer(const AllocatedBuffer& stagingBuffer, const AllocatedBuffer& targetBuffer, std::vector<glm::mat4> matrices);
 	void destroy_image(const AllocatedImage& image);
 	void destroy_buffer(const AllocatedBuffer& buffer);
 	void resize_swapchain();
